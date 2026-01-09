@@ -1,4 +1,4 @@
-# SIFS: Spatially Informed Feature Selection for MALDI-MSI
+SIFS: Spatially Informed Feature Selection for MALDI-MSI
 
 **SIFS** is an R package implementing *Spatially Informed Feature Selection* for mass spectrometry imaging (MSI), designed to prioritize **m/z features** that are informative **in their spatial context** (e.g., co-localization with neuropathology annotations and spatial molecular patterns), rather than relying on intensity differences alone.
 
@@ -11,7 +11,7 @@ This repository accompanies the manuscript from the CeMOS Mannheim group and pro
 SIFS is built around the following concepts:
 
 - **Spatial context matters:** MSI signals are evaluated not only by magnitude but by their *spatial organization*.
-- **Co-localization with annotations:** Features can be prioritized based on agreement with histology/neuropathology labels (where provided).
+- **Co-localization with annotations:** Features can be prioritized based on agreement with histology/neuropathology annotations/labels (where provided).
 - **Compact, performant feature sets:** SIFS supports aggressive feature reduction (e.g., to 256 m/z) for faster learning and improved generalization in many models.
 
 ---
@@ -74,7 +74,7 @@ library(SIFS)
 
 If you use SIFS in academic work, please cite the associated manuscript:
 
-> Citation will be included once paper is published. 
+> Citation will be included once the article is published. 
 
 
 ---
