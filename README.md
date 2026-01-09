@@ -4,6 +4,7 @@ SIFS: Spatially Informed Feature Selection for MALDI-MSI
 
 This repository accompanies the manuscript from the CeMOS Mannheim group and provides a reproducible implementation of the SIFS workflow used for spatially aware **m/z feature selection** (e.g., reducing high-dimensional MSI spectra to a compact, informative set),
 
+
 ---
 
 ## Key ideas
