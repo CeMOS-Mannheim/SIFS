@@ -58,7 +58,7 @@ Then you can use the chunk option `fig.cap = "Your figure caption."` in **knitr*
 
 You can write math expressions, e.g. $Y = X\beta + \epsilon$, footnotes^[A footnote here.], and tables, e.g. using `knitr::kable()`.
 
-```{r, echo=FALSE, results='asis'}
+```{r, echo=T, results='asis'}
 knitr::kable(head(mtcars, 10))
 ```
 
