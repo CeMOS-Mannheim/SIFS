@@ -3,9 +3,11 @@ Title: What the Package Does (One Line, Title Case)
 Version: 0.0.0.9000
 Authors@R: 
     person("First", "Last", , "first.last@example.com", role = c("aut", "cre"))
-Description: What the package does (one paragraph).
+Description: The SIFS package performs spatially informed feature selection by calculating HMCS per tissue sample's tissue histology features.
 License: `use_mit_license()`, `use_gpl3_license()` or friends to pick a
     license
+Depends: R (> 4.5.1)
+Imports: moleculaR (0.9.5) spatstat (3.5-0) spatstat.geom (3.1-9) reticulate (1.44.1) MALDIquant (1.22.3) MALDIquantForeign (0.14.1)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
