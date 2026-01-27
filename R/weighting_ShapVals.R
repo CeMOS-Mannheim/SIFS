@@ -1,6 +1,31 @@
+#' Conditional SHAP weighing function
+#'
+#' a function to conditionally weigh SHAP values across the different tissue histology feaures. 
+#' WARNING: only use this method if you have domain knowledge and you delibrately want to attend SIFS to a specific tissue histology feature of interest. 
+#' when a given number of columns have zero values in that particular list of columns. 
+#' It removes majority of irrelevant features in the m/z axis  
+#' This method weighs SHAP values per class, and thereby decreases False Positive Rates (FPR) inherent to Spectral SHAP. EXPERIMENTAL as of 21.03.2024 and requires extensive domain knowlege. 
+#' NOTE: outputs of this method are not included in Mohammed et al., 2026 manuscript.
+#' Weighing criterion can be based on positive, negative, average, absolute, absolute average SHAP values, in combination with the different tissue histology features of interest.
+#' outputs vary based on user defined parameter selections. 
+#' @param df  a dataframe containing SHAP values for each tissue histology feature:    
+#' @param focusColumn  a character, specifying which tissue histology feature you want SIFS to focus on and weigh based on it.
+#' @param condition a preset character setting, like "VT" for viable tumor, to set the condition on viable tumor and penalize localization inside other tissue histolgy features.
+#' @param weighted a boolean value, TRUE = run SHAP weighing, FALSE = return to classical HMCS calculation. 
+#' @param ... ignored.
+#'
+#'
+#' @return
+#' clean dataframe that filters SHAP values DataFrames.
+#'
+#' @export
+#'
+#' @author Shad Arif Mohammed, \email{s.mohammed@doktoranden.hs-mannheim.de}
+#'
+
 
 # Function to weigh SHAP values based on different conditions
-SHAP_weighing <- function(df, focusColumn = "VtShap", condition = which_shap_focus, weighted = FALSE) {
+SHAP_weighing <- function(df, focusColumn = "VtShap", condition = which_shap_focus, weighted = FALSE, ...) {
 
       # Initialize a list to store weighted values
       weightedValues <- list()
