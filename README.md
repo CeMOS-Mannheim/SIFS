@@ -43,9 +43,11 @@ library(SIFS)
 
 SIFS is an R package and depends on common scientific R libraries. The exact dependency list is recorded in `DESCRIPTION`, but you can typically expect packages for:
 
-* matrix/statistics utilities,
-* spatial/image operations,
-* machine learning wrappers (optional; SIFS itself focuses on feature selection).
+* matrix/statistics utilities (packages: MALDIquant (1.22.3), MALDIquantForeign (0.14.1)),
+* spatial/image operations (packages: moleculaR (0.9.5), spatstat (3.5-0), spatstat.geom (3.1-9)),
+* machine learning wrappers (optional; SIFS itself focuses on feature selection) 
+ * package requirements for ML inside Rstudio: (reticulate (1.44.1), python (3.12), SHAP (0.5) xgboost (3.1.3)).
+* 
 
 If you encounter installation issues on Linux/macOS related to system libraries, please ensure you have a working C/C++ toolchain and standard build tools for R packages.
 
@@ -63,8 +65,11 @@ library(SIFS)
 # coords: matrix/data.frame [n_pixels x 2] of spatial coordinates
 # y: optional vector [n_pixels] with neuropathology labels / ROI membership
 
-# 1) Run spatially informed feature selection
-# selected <- sifs_select(X, coords = coords, y = y, k = 256)
+# 1) Run spatially informed feature selection: 
+# selected <- HMCS_calculatorBinary(dsc_df, focuROI = "VT")
+## Print(head(selected, 5))
+## Note: returns a dataframe of three columns: mzList, dsc_mpm, HMCS_VT
+## this dataframe must be ordered based on the last column `(HMCS_VT)` then it can be fed to the downstream ML/DL or benchmarking pipelines.  
 
 # 2) Subset the feature matrix
 # X_red <- X[, selected$mz_index]
