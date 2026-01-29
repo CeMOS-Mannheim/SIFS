@@ -60,7 +60,7 @@ Below is a schematic example showing the typical steps. The exact function names
 ```r
 library(SIFS)
 
-# Example inputs (conceptual)
+# Example inputs (conceptual) check vignettes and notebooks for a detailed workflow: 
 # X: matrix [n_pixels x n_mz] intensity matrix
 # coords: matrix/data.frame [n_pixels x 2] of spatial coordinates
 # y: optional vector [n_pixels] with neuropathology labels / ROI membership
