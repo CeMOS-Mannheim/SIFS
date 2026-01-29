@@ -21,6 +21,12 @@ knitr::opts_chunk$set(
 
 - please install the dependencies if not installed already (see Description file).
 
+`Description`
+
+This is an end to end pipeline in R to perform SIFS workflow on two tissue samples. One would be considered as training set tissue {XIII-t3 83318 (ref tissue num = t3)} and the other is testing set tissue {XV_t1 82558 (ref tissue num = t4)} sample.
+
+
+
 ```{r loadSIFS, message=FALSE, warning=FALSE}
 # install.packages("remotes")
 remotes::install_github("CeMOS-Mannheim/SIFS")
@@ -28,7 +34,924 @@ library(SIFS)
 ```
 
 
+## Instantiate required variables
+
+needed variables Are: {input, output, ionization, Alpha, ROIs, comparisonNum, current_data, mzMode, selectedmzList}
+
+
+```{r}
+# [0] globally important variables
+
+# I/O of this project: 
+
+in_project  = "~/04_End2End_SIFS/input/"
+out_project ="~/04_End2End_SIFS/output/"
+
+
+## set alpha for transparency control of multimodal integration
+Alpha = 0.5
+
+## set a date stamp to be put in output file names and folder structure names: 
+current_date = format(Sys.time(), "%d_%m_%y")
+print(current_date)
+
+
+```
+
+
+
+```{r}
+# _____________________________________
+# [1] variables needed to load msi dataset (spmat, coords, mis files), optical image, and H&E image
+# _____________________________________
+ionisation = c("pos","neg") 
+selected_ionisation = ionisation[1]
+ROIs <- c("VT","Nec","PreNec")
+ROI = ROIs[1]
+# condition to select the name of comparison iter: 
+num_comparison = NA
+if(ROI == "VT"){
+      num_comparison = "01"
+}else if(ROI == "Nec"){
+      num_comparison = "02"
+}else {num_comparison = "03"
+}
+
+
+
+absPath = file.path("~/04_End2End_SIFS") # path to project directory: 
+# root dir for the different inputs: 
+
+input_main = file.path(absPath, "input")
+output_main <- switch(selected_ionisation,
+                      "pos" = {
+                          dir_path <- file.path(absPath, "output", "01_pos", "12_multimodalIntgrtion_mz")
+                          if (!file.exists(dir_path)) dir.create(dir_path, recursive = TRUE)
+                          dir_path
+                      },
+                      "neg" = {
+                          dir_path <- file.path(absPath, "output", "02_neg", "12_multimodalIntgrtion_mz")
+                          if (!file.exists(dir_path)) dir.create(dir_path, recursive = TRUE)
+                          dir_path
+                      },
+                      message("The selected ionisation is not known!"))
+
+# _____________________________________
+# [2] variables needed for SHAP and SHAP filtering
+# _____________________________________
+
+mzModes     <- c("02_SIFS_outputs","01_SHAP_outputs") 
+sel_mzModes <- mzModes[1] # select the SIFS outputs here. 
+cat("selection mode is of this iteration is : ",sel_mzModes, "\n selected ROI is: ", ROI)
+
+```
+
+
+
+```{r}
+# here plot top 10 pos and/or neg shap values, for that I am making new selections
+SelSHAP = c("PosSHAP", "NegSHAP")[1]
+
+if(SelSHAP == "PosSHAP"){
+       mzList = c()} else{
+       mzList = c()}
+cat("the selected m/z list for this workflow is: \n",mzList)
+```
 
 
 
 
+
+
+```{r}
+# _____________________________________
+# [3] variables needed for multimodal integration
+# _____________________________________
+
+# all tissue names in both cohorts: 
+t_names = paste0("t",seq(1,32)[-c(6,21,23)]) # why tissue 6 is excluded here ? in the refernce num tissue 6 is XIII-t3 83318 but here I must check.
+trainSetNames = paste0("t",seq(1,32)[-c(1,4,5,18,6,21,23,20,22,24,25,26,27,28)])
+testSetNames  = t_names[!t_names%in%trainSetNames]
+
+# Requirement 1) load mis files, so as to get tissue boundary and annotations if needed. 
+
+TrainingSetMis = file.path(absPath, "input", "0_mis_files/mis_XIII_t3_83318_trainSet.rds") # training set mis file: 
+TestingSetMis  = file.path(absPath, "input", "0_mis_files/mis_XV_t2_82558_testSet.rds")
+
+## read mis files below, from RDS files: 
+t3_mis   <- readRDS(file = TrainingSetMis) # this reads Training Set mis file.
+t4_mis    <- readRDS(file = TestingSetMis)  # this reads Testing  Set mis file. 
+
+# names_mis <- paste0("t", seq(42)[-c(6,21,23)])
+
+
+
+# names(mis_pos) <- names_mis; rm(names_mis)
+# after extracting the needed mis files then remove the global one: 
+
+
+# remove mis files here, to save memory: 
+
+
+# clear up RAM
+gc(full = TRUE)
+```
+
+
+
+
+
+
+# Set ROI names of the tissue samples:
+
+here you would need to get the ROI names of the tissue samples you need for the analysis, as each measurement slide contains several tissue samples on them, and one would need to know exactly which tissue ROI names should pick. Dataset meta data are provided in the Data-sets repository on Zenodo.org under the following DOI:
+
+10.5281/zenodo.18187395
+
+
+
+
+```{r}
+
+TrainingSetROI_name <- "83318"
+TestingSetROI_name  <- "82558"
+
+```
+
+
+
+
+
+
+
+# Save mis files of t3 and t4 to input
+
+
+```{r}
+
+# t3 = XIII-t3 83318 == training set tissue
+# saveRDS(object = mis_pos$t3, file = file.path(in_project, "0_mis_files", "mis_XIII_t3_83318_trainSet.rds"))
+# t4 = XV-t1 82558 == testing set tissue
+# saveRDS(object = mis_pos$t4, file = file.path(in_project, "0_mis_files", "mis_XV_t2_82558_testSet.rds"))
+
+```
+
+
+# Load inputs
+
+
+## load inputs first, then deposit them to the input of this project
+
+
+
+
+```{r}
+# path to a folder where the input files can be found [pre-processed]:
+AbsPath  = absPath 
+
+# Read sparse intensity matrices (SPMAT objects): 
+
+# 01: spmat for training set (t3)
+t3_spmat_pos <- readRDS(file = file.path(AbsPath, "input/01_spmatObjects/trainset_tissue/tr_spmat_XIII_t3_83318.rds"))
+# 02: spmat for testing set (t4)
+t4_spmat_pos <- readRDS(file = file.path(AbsPath, "input/01_spmatObjects/testset_tissue/tst_spmat_XV_t1_82558.rds"))
+
+
+
+
+# Read labels and split by tissue sample:
+# Read in all labels for all tissues, not needed for this example workflow: 
+lbls_pos_ALL  <- readRDS(file = file.path(AbsPath, "input/04_y_lbls/spectraLblsAll/04_Lbl_df_giant_pos/Lbls_df_Pos_all.rds"))
+# Define a function to create coordinates matrix for each patient:
+
+split_lbls <- split(lbls_pos_ALL, lbls_pos_ALL$pos_refNames)
+
+# Note: Label encoding is: 0 == Tumor , 1 == No-tumor
+
+# Obtain t3 labels: 
+t3_lbls <- as.factor(split_lbls$t3$Vt_vs_all_lbls)
+
+# Obtain t4 labels: 
+t4_lbls <- as.factor(split_lbls$t4$Vt_vs_all_lbls)
+
+
+# get pixel coordinates for each   
+t3_coordinatesDF <- split_lbls$t3[,11:12] # for training set.
+t4_coordinatesDF <- split_lbls$t4[,11:12] # for testing  set. 
+
+lbls_pos = lbls_pos_ALL
+```
+
+
+
+
+
+# Labels of TrainSet TestSet
+
+labels must be extracted from .mis files, then vectorised, this workflow shows already vectorized labels: 
+
+
+
+```{r}
+# lbls_pos$pos_refNames %>% table()
+# [ROI options]: "VT"     "Nec"    "PreNec"
+if(ROI == "VT"){
+      # XIII-t3 83318 TrainingSet lables: 
+      t3_lbls = lbls_pos$Vt_vs_all_lbls[lbls_pos$pos_refNames == "t3"]
+      # XV-t1 82558 TestingSet lables: 
+      t4_lbls = lbls_pos$Vt_vs_all_lbls[lbls_pos$pos_refNames == "t4"]
+}else if(ROI == "Nec"){
+      # XIII-t3 83318 TrainingSet lables: 
+      t3_lbls = lbls_pos$Nec_vs_all_lbls[lbls_pos$pos_refNames == "t3"]
+      # XV-t1 82558 TestingSet lables: 
+      t4_lbls = lbls_pos$Nec_vs_all_lbls[lbls_pos$pos_refNames == "t4"]
+            
+}else if(ROI == "PreNec"){
+      # XIII-t3 83318 TrainingSet lables: 
+      t3_lbls = lbls_pos$PreNec_vs_all_lbls[lbls_pos$pos_refNames == "t3"]
+      # XV-t1 82558 TestingSet lables: 
+      t4_lbls = lbls_pos$PreNec_vs_all_lbls[lbls_pos$pos_refNames == "t4"]
+}else{cat("lbl class not known .... Please add your other label class conditions here !")}
+```
+
+
+
+
+
+# Deposit processed SPMAT to input directory
+
+SPMAT stands for sparse intensity matrix, for faster computation. 
+
+
+- save SPMAT of t3 and t4 in the input folder then reload them.
+
+```{r}
+# training set tissue sample saved: 
+# saveRDS(object = spmat_pos_list$t3, file.path(in_project,"01_spmatObjects", "trainset_tissue", "tr_spmat_XIII_t3_83318.rds"))
+# test set tissue sample saved: 
+# saveRDS(object = spmat_pos_list$t4, file.path(in_project,"01_spmatObjects", "testset_tissue", "tst_spmat_XV_t1_82558.rds"))
+
+# read trainset SPMAT object: 
+# t3_spmat = readRDS(file = file.path(in_project,"01_spmatObjects", "trainset_tissue", "tr_spmat_XIII_t3_83318.rds"))
+# # read test set SPMAT object: 
+# t4_spmat = readRDS(file = file.path(in_project,"01_spmatObjects", "testset_tissue", "tst_spmat_XV_t1_82558.rds"))
+# gc(full = TRUE)
+```
+
+
+
+# Run python chunks: 
+
+- Run SHAP pipeline from python
+
+```{python }
+reticulate::repl_python()
+# [02] Load needed libraries
+import shap
+import time
+import joblib
+import pickle 
+import sys, os
+import numpy as np
+import scienceplots
+import pandas as pd
+import seaborn as sns
+from xgboost import XGBClassifier
+from sklearn.metrics import confusion_matrix
+from sklearn.model_selection import GridSearchCV
+from sklearn.model_selection import GridSearchCV
+from sklearn.feature_selection import SelectPercentile, chi2
+np.random.seed(2022)
+
+
+# the labels are encoded as string in the R side, here one needs to conver it to ineger values: 
+
+y_train = [int(i) for i in r.t3_lbls]
+y_test  = [int(i) for i in r.t4_lbls]
+
+# check shape of each of the label vars: 
+def lbl_tabulator(lbl): 
+      categories = sorted(set(lbl))
+      result = {
+            "categories" : categories, 
+            "counts"     : [lbl.count(i) for i in categories],
+            "lbl_length" : len(lbl)
+            }
+      return(result)
+      
+print(lbl_tabulator(lbl = y_train))
+print(lbl_tabulator(lbl = y_test))
+
+# load spars
+# t3 = r.t3_spmat["spmat"].toarray() # conver this a dense matrix. 
+
+def xgb_classifier(X, y, is_default=True):
+    if is_default:
+        xgb_default = XGBClassifier(
+            objective='binary:logistic',
+            nthread=34,
+            learning_rate=0.05,
+            n_estimators=60,
+            max_depth=4,
+            seed=42
+        )
+        xgb_default.fit(X, y)
+        return {"xgb_bst": xgb_default, "params_bst": "defaults_used"}
+        
+    else:
+        # Perform feature selection
+        fs = SelectPercentile(chi2, percentile=20)
+        x_train_fs = fs.fit_transform(X, y)
+        
+        param_grid = {
+            'learning_rate': [0.05, 0.01, 0.1],
+            'max_depth': [4, 6],
+            'n_estimators': [50, 60, 80],
+        }
+        # use number of threads wisely. 
+        grid_search = GridSearchCV(
+            estimator=XGBClassifier(objective='binary:logistic', nthread=4, seed=42),
+            param_grid=param_grid,
+            scoring='roc_auc',
+            cv=4,
+            n_jobs=-1
+        )
+        
+        grid_search.fit(x_train_fs, y)
+        best_params = grid_search.best_params_
+        
+        xgb_best = XGBClassifier(
+            objective='binary:logistic',
+            nthread=30,
+            seed=42,
+            learning_rate=best_params['learning_rate'],
+            max_depth=best_params['max_depth'],
+            n_estimators=best_params['n_estimators']
+        )
+        xgb_best.fit(x_train_fs, y)
+        
+        return {"xgb_bst": xgb_best, "params_bst": best_params}
+        
+# Example usage
+start_time = time.time()
+model_result = xgb_classifier(X=r.t3_spmat_pos["spmat"], y=y_train, is_default=False) # hyperparameter tuning
+end_time = time.time()
+print(f"Elapsed time: {end_time - start_time:.2f} seconds")
+
+print(model_result["params_bst"])
+
+
+# {'learning_rate': 0.1, 'max_depth': 6, 'n_estimators': 50}
+
+bst_lr          = model_result["params_bst"]["learning_rate"]
+bst_max_depth   = model_result["params_bst"]["max_depth"]
+bst_n_estimator = model_result["params_bst"]["n_estimators"]
+
+
+# dump the classifier in the output directory: 
+
+location = r.AbsPath+"/output/models/"
+ROI = r.ROI
+print(f'your selected ROI from the R side is: \n {ROI}')
+joblib.dump(model_result, f'{location}00_HyperParamTuned_xgb_Giant_binary_Full_mz_{ROI}.pkl')
+joblib.dump(model_result["xgb_bst"], f'{location}01_xgb_Giant_binary_Full_mz_{ROI}.pkl')
+```
+
+
+
+## train the best & final XGB classifier
+
+This is already optimized for this dataset, training was performed on a cluter computing platform (Linux OS)
+
+change the number of threads based on your PC. 
+
+```{python }
+
+MZ = [round(i, 6) for i in r.t3_spmat_pos["mzAxis"]]# mzList 
+# best model:
+x_train = r.t3_spmat_pos["spmat"].toarray()
+x_test  = r.t4_spmat_pos["spmat"].toarray()
+xgb_best = XGBClassifier(
+            # objective='binary:logistic',
+            nthread=30,
+            seed=42,
+            #num_class=1,
+            learning_rate= bst_lr,
+            max_depth= bst_max_depth,
+            n_estimators=bst_n_estimator)
+xgb_best.fit(x_train, y_train)
+x_train_df = pd.DataFrame(x_train, columns=MZ)
+x_test_df  = pd.DataFrame(x_test, columns=MZ)
+```
+
+
+# deposite outputs to output
+
+```{python }
+
+shap_values = shap.TreeExplainer(xgb_best).shap_values(x_test_df)
+
+```
+
+
+plot sha values: 
+
+
+```{python }
+import matplotlib.pyplot as plt
+plt.figure(figsize=(10, 8))  # Wider plot
+shap.bar_plot(shap_values[0], feature_names=x_test_df.columns, max_display=20, show=False)
+
+wDir = r.AbsPath+"/output/"
+plt.savefig(f"{wDir}/plots/01_shap_bar_plot_{ROI}_lbls.jpg", dpi=300, bbox_inches='tight', format = "jpeg")  # High resolution
+plt.close()
+```
+
+
+
+- Save shap dataframe: 
+
+```{python }
+
+ShapVals_df = pd.DataFrame(shap_values[0], index = x_test_df.columns )
+n_features = ShapVals_df.shape[0]
+def SHAP_forClass(ShapVals_df = ShapVals_df, tissueClass = "tumor", n_features = n_features):
+    tissueClass = tissueClass.lower()
+    if tissueClass == "tumor": 
+        DF_sortedTumor = ShapVals_df.sort_values(by=0, ascending=False)
+        return DF_sortedTumor.head(n_features)
+    else: 
+        DF_sortedNon_tumor = ShapVals_df.sort_values(by=0, ascending=True)
+        return DF_sortedNon_tumor.head(n_features)
+Tumor_Shaps = SHAP_forClass(ShapVals_df, tissueClass = "tumor", n_features = n_features) 
+print(Tumor_Shaps.head(2))
+# non-tumor Shaps
+Non_tumor_Shaps = SHAP_forClass(ShapVals_df, tissueClass = "NonT", n_features = n_features) 
+print(Non_tumor_Shaps.head(2))
+```
+
+
+
+
+
+```{python }
+# This saves SHAP values for the class of interest (ex VT+VTv) arranged based on the classification task: 
+
+output_dirs = f"{wDir}/SHAP_outputs/"
+Positive_SHAP_values = Tumor_Shaps
+posDF = Positive_SHAP_values[0].reset_index()
+posDF.columns = ["mz_list", "Pos_Shaps"]
+
+
+NegativeSHAP_values = Non_tumor_Shaps
+NegativeSHAP_values = NegativeSHAP_values[0].reset_index()
+NegativeSHAP_values.columns = ["mz_list", "Neg_Shaps"]
+
+
+# Save to dir: 
+VT_ROIFolder, Nec_ROIFolder,PreNec_ROIFolder = "VT_SHAPs", "Nec_SHAPs","PreNec_SHAPs"
+if(ROI == "VT"): 
+      posDF.to_csv(f"{output_dirs}/{VT_ROIFolder}/PostiveSHAP_value_{ROI}_DF_lbl.csv", index = False)
+      NegativeSHAP_values.to_csv(f"{output_dirs}/{VT_ROIFolder}/NegativeSHAP_value_{ROI}_DF_lbl.csv", index = False)
+elif(ROI == "Nec"): 
+      posDF.to_csv(f"{output_dirs}/{Nec_ROIFolder}/PostiveSHAP_values_{ROI}_DF_lbl.csv", index = False)
+      NegativeSHAP_values.to_csv(f"{output_dirs}/{Nec_ROIFolder}/NegativeSHAP_value_{ROI}_DF_lbl.csv", index = False)
+else: 
+      posDF.to_csv(f"{output_dirs}/{PreNec_ROIFolder}/PostiveSHAP_value_{ROI}_DF_lbl.csv", index = False)
+      NegativeSHAP_values.to_csv(f"{output_dirs}/{PreNec_ROIFolder}/NegativeSHAP_value_{ROI}_DF_lbl.csv", index = False)
+```
+
+
+
+Clean-up Python Session
+
+```{python }
+# remove all variables in this python session:
+def clear_all():
+      for name in list(globals()):
+            if not name.startswith("_") and name not in ['clear_all']:
+                  del globals()[name]
+                  
+clear_all()
+
+```
+
+
+
+
+# SHAP filter application 
+
+use  `SIFS::Zero_remover()`  method 
+
+
+```{r}
+# [01] get SHAP csv files you need:  
+SHAP_csvNames = list.files(file.path(AbsPath,"output/SHAP_outputs/"), pattern = ".csv", full.names = TRUE, recursive = TRUE)
+
+if(SelSHAP == "PosSHAP"){
+      SHAP_files = grepl(x= SHAP_csvNames,pattern  = "PostiveSHAP_")
+}else {
+      SHAP_files = grepl(x= SHAP_csvNames,pattern  = "NegativeSHAP_")}
+
+ShapFiles = SHAP_csvNames[SHAP_files]
+
+# this example only has VT and Nec in the training set tissue sample, adjust accordingly: 
+
+VT_shap_csv  = ShapFiles[grepl(x =  ShapFiles, pattern = "_VT_")]
+Nec_shap_csv = ShapFiles[grepl(x =  ShapFiles, pattern = "_Nec_")]
+# Read the SHAP values df: 
+VT_shap_df  = data.table::fread(VT_shap_csv)
+Nec_shap_df = data.table::fread(Nec_shap_csv)
+# PreNec_shap_df = data.table::fread(PreNec_shap_csv) # in case other ROIs existed in the tissue! add them like so. 
+
+VT_shap_df_Sorted = VT_shap_df[order(
+      as.numeric(VT_shap_df[[1]]), decreasing = FALSE
+      )
+      ] 
+
+Nec_shap_csv_Sorted = Nec_shap_df[order(
+      as.numeric(Nec_shap_df[[1]]), decreasing = FALSE
+      )
+      ]
+
+
+
+# SHAP values per class in 1 df: 
+SHAP_df = cbind(VT_shap_df_Sorted, Nec_shap_csv_Sorted)
+
+colnames(SHAP_df) = c("mzList", paste0(ROIs[1],"_SHAP"), "mzList_2",paste0(ROIs[2],"_SHAP") )
+
+SHAP_df = SHAP_df[, -c("mzList_2")] # this dataframe has the shape: (13144 x  3) before zeroSHAP remover application: 
+
+SHAP_df_zeroRM = Zero_remover(df = SHAP_df, col_idx = 2:3) # removes zero across {VT,Nec} SHAP values here 
+
+# yields a dimension of (1359 X  3) removing 89.7% of the features. 
+```
+
+
+
+
+# Assign SHAP to class:
+
+- this is feature assignment: 
+
+```{r}
+# max feature value for class: 
+max_feat <- apply(SHAP_df_zeroRM[, c(2,3)], MARGIN = 1, FUN = function(row){
+      names(SHAP_df_zeroRM)[which.max(row)+1]
+      })
+
+SHAP_df_zeroRM$"max_feat" <- max_feat
+
+# Feature assignment to class (based on SHAP): 
+mz_VT_shap_assigned  <- SHAP_df_zeroRM[which(SHAP_df_zeroRM$max_feat == "VT_SHAP"), ]
+mz_VT_shap_assigned <- mz_VT_shap_assigned[order(mz_VT_shap_assigned$VT_SHAP, decreasing = TRUE), ]
+mz_Nec_shap_assigned <- SHAP_df_zeroRM[which(SHAP_df_zeroRM$max_feat != "VT_SHAP"), ]
+mz_Nec_shap_assigned <- mz_Nec_shap_assigned[order(mz_Nec_shap_assigned$Nec_SHAP, decreasing = TRUE)]
+
+
+```
+
+
+
+## Run HMCS method sourced from methods
+
+use `SIFS::HMCS_calculatorBinary()` method from SIFS package. 
+
+
+this requires:
+
+- spatial windows, depends on `moleculaR` pacakge: 
+
+- precalculated FWHM
+
+
+```{r}
+
+# create SPWIN object for each tissue sample: 
+spwin_t3 <- moleculaR::createSpatialWindow(pixelCoords = t3_spmat_pos$coordinates, plot = T)
+spwin_t4 <- moleculaR::createSpatialWindow(pixelCoords = t4_spmat_pos$coordinates, plot = T)
+
+fwhm_pos <- readRDS(file.path(AbsPath,"input/06_fwhm_object/fwhm_obj_pos.rds"))
+plot(fwhm_pos)
+
+
+```
+
+
+
+
+## Select ROI, here would be VT
+
+```{r}
+# below gets m/z list for the ROI of focus to test HMCS:
+if(ROI ==ROIs[1]){
+      mzList <- mz_VT_shap_assigned$mzList
+} else if(ROI ==ROIs[2]){
+      mzList <- mz_Nec_shap_assigned$mzList
+} else{
+      cat("Add the other ROI conditions here!")
+      }
+# Note: these are arranged from highest (positive) SHAP values to lowest. 
+print(mzList[1:10])
+```
+
+
+
+
+# SPP and MPM calculation on Training set tissue sample(s)
+
+```{r}
+
+## SPP calcualtion per tissue:
+SPP_t3_list_pos <- NULL
+SPP_t4_list_pos <- NULL
+hotspotMasks_t3 <- NULL
+hotspotMasks_t4 <- NULL
+probImg_t3_pos  <- NULL
+probImg_t4_pos  <- NULL
+
+for(i in seq_along(mzList)){
+      # calculation of SPP for t3: 
+      SPP_t3_list_pos <- moleculaR::searchAnalyte(m = mzList[[i]],
+                                                  fwhm = moleculaR::getFwhm(fwhm_pos, mzList[i]),
+                                                  spwin = spwin_t3, 
+                                                  spData = t3_spmat_pos, 
+                                                  wMethod = "Gaussian"
+                                                  )
+      # Check if any analyte was found
+      if (SPP_t3_list_pos$n > 0) {
+            # If analyte was found, calculate the probability map
+            tissue3_MPMObj <- moleculaR::probMap(sppMoi = SPP_t3_list_pos, bw = 2.5)
+            # Store the probability map in the results list
+            probImg_t3_pos[[i]] <-tissue3_MPMObj
+            hotspotMasks_t3[[i]] <- probImg_t3_pos[i]$hotspotMask
+      }
+
+      
+      
+      
+      
+      # calculation of SPP for t4: 
+      SPP_t4_list_pos <- moleculaR::searchAnalyte(m = mzList[[i]],
+                                                  fwhm = moleculaR::getFwhm(fwhm_pos, mzList[i]),
+                                                  spwin = spwin_t4, 
+                                                  spData = t4_spmat_pos, 
+                                                  wMethod = "Gaussian"
+      )
+      # Check if any analyte was found
+      if (SPP_t4_list_pos$n > 0) {
+            # If analyte was found, calculate the probability map
+            tissue4_MPMObj <- moleculaR::probMap(sppMoi = SPP_t4_list_pos, bw = 2.5)
+            # Store the probability map in the results list
+            probImg_t4_pos[[i]] <-tissue4_MPMObj  
+            
+            hotspotMasks_t4[[i]] <-probImg_t4_pos[i]$hotspotMask}      }
+
+
+
+```
+
+
+## Save SPP and MPM objects
+
+
+```{r}
+# Creates a list containing all SPP and MPM objects to be saved locally and referenced later: 
+SPP_MPM_objects <- list(SPP_t3 = SPP_t3_list_pos, 
+                        SPP_t4 = SPP_t4_list_pos, 
+                        MPM_t3 = probImg_t3_pos,  
+                        MPM_t4 = probImg_t4_pos
+                        )
+
+saveRDS(object = SPP_MPM_objects, file = file.path(AbsPath, "output/SPPs_MPMs", "01_spp_mpm_objects.rds"))
+# readRDS(file = file.path("output/SPPs_MPMs", "01_spp_mpm_objects.rds"))
+
+
+```
+
+
+
+
+
+## Create win for tissue subtypes like VT, Nec, and PreNec
+
+
+
+
+### Output quality checks: 
+
+```{r plt_aMass}
+cat("Running a quality check for the first m/z value's hotspot maps: ")
+plot(spwin_t3, ylim = rev(range(spwin_t3$yrange)))
+plot(mpm_htspt_win$t3[[1]]  , ylim = rev(range(spwin_t3$yrange)), title(main = paste0("\n \n \n m/z: ", mzList[1], "\n")) ,add = T)
+library(moleculaR)
+moleculaR:::plot.molProbMap(mpmObjects$MPM_t3[[1]], what = "MPM", figLegend = F)
+
+```
+
+
+
+
+
+### Calculate overlap: 
+step 1) create empty slots: 
+```{r dsc_objects}
+# Initiate a list object to contain patient ids: 
+# Create an empty list to store dsc_objs
+dsc_objs <- vector(mode = "list", length = length(unique(patients_t3_t4)))
+names(dsc_objs) <- unique(patients_t3_t4)
+
+for(i in seq_along(dsc_objs)){
+      dsc_objs[[i]]$dcs_with_VT      <- vector(mode = "list")
+      # dsc_objs[[i]]$dcs_with_VtVasc  <- vector(mode = "list")
+      dsc_objs[[i]]$dcs_with_Nec     <- vector(mode = "list")
+      # dsc_objs[[i]]$dcs_with_PreNec  <- vector(mode = "list")
+      }
+
+
+```
+
+Step 2) Calculate Raw DSC of desired ROI to all tissue ROIs / tissue. 
+here the selected ROI of the first iteration is VT, thus the selected mzList would be {number of_} masses specific to Viable Tumour to be checked for their overlap across all ROIs in each tissue. 
+The next step will then to carry out the process of weighing the dsc values, put them in a dataframe, then filter them out --> write to disk.
+```{r Step2_DSC}
+# [01] Training tissue DSC pbjects: 
+# loop through VT t3:
+
+for (i in seq_along(dsc_objs$t3)) {
+        dsc_objs$t3$dcs_with_VT <- tryCatch(
+          {
+            lapply(X = mpm_htspt_win$t3, FUN = function(X) {
+              if(!is.null(master_windows$t3$VT_win)){
+                    moleculaR::dsc(win0 = X,
+                                   win1 = master_windows$t3$VT_win,
+                                   winBackground = spwin_t3,
+                                   plot = F  # "T" replaced with "TRUE"
+                                   )
+
+              } else {
+                print(master_windows$t3$VT_win)
+              }
+            })
+          },
+          error = function(e) {
+            message(paste("Error occurred for time point", i, ": ", conditionMessage(e)))
+            return(NULL)  # Return NULL if an error occurs
+          }
+        )
+      }
+
+# loop through Nec T3:
+for (i in seq_along(dsc_objs$t3)) {
+        dsc_objs$t3$dcs_with_Nec <- tryCatch(
+          {
+            lapply(X = mpm_htspt_win$t3, FUN = function(X) {
+              if(!is.null(master_windows$t3$Nec_win)){
+                    moleculaR::dsc(win0 = X,
+                                   win1 = master_windows$t3$Nec_win,
+                                   winBackground = spwin_t3,
+                                   plot = F  # "T" replaced with "TRUE"
+                                   )
+
+              } else {
+                print(master_windows$t3$Nec_win)
+              }
+            })
+          },
+          error = function(e) {
+            message(paste("Error occurred for time point", i, ": ", conditionMessage(e)))
+            return(NULL)  # Return NULL if an error occurs
+          }
+        )
+      }
+
+
+# loop through PreNec T3:
+# 
+# for (i in seq_along(dsc_objs$t3)) {
+#         dsc_objs$t3$dcs_with_PreNec <- tryCatch(
+#           {
+#             lapply(X = mpm_htspt_win$t3, FUN = function(X) {
+#               if(!is.null(master_windows$t3$PreNec_win)){
+#                     moleculaR::dsc(win0 = X,
+#                                    win1 = master_windows$t3$PreNec_win,
+#                                    winBackground = spwin_list$t3,
+#                                    plot = F  # "T" replaced with "TRUE"
+#                                    )
+# 
+#               } else {
+#                 print(master_windows$t3$PreNec_win)
+#               }
+#             })
+#           },
+#           error = function(e) {
+#             message(paste("Error occurred for time point", i, ": ", conditionMessage(e)))
+#             return(NULL)  # Return NULL if an error occurs
+#           }
+#         )
+#       }
+
+
+# DSC DF of trainingset
+dsc_df <- data.frame(
+      mzList = mzList, 
+      dsc_mpm_VT  = unlist(dsc_objs$t3$dcs_with_VT), # dsc of mpm with VT of TrainingSet
+      dsc_mpm_Nec = unlist(dsc_objs$t3$dcs_with_Nec)#, # dsc of mpm with Nec of TrainingSet
+      # dsc_mpm_PreNec = as.factor(rep("", length(mzList)))        # this is a placeholder for other ROIs depending on the Tissue ROIs.
+      )
+
+
+```
+
+binary HMCS calcualtor: 
+
+```{r}
+# [Date]   02.07.2025
+# [Author] SHAD A. M.
+# [Method] HMCS alculator binary mode.
+
+HMCS_calculatorBinary <- function(DSC_df, focusROI = "VT", ...){
+      # equation
+      if(focusROI == "VT"){
+            hmcs_VT <- (DSC_df$dsc_mpm_VT)- (DSC_df$dsc_mpm_Nec )#+ DSC_df$dsc_PreNec
+            return(hmcs_VT)
+      } else if(focusROI == "Nec"){
+            hmcs_Nec <- (DSC_df$dsc_mpm_Nec)- (DSC_df$dsc_mpm_VT)# + DSC_df$dsc_PreNec
+            return(hmcs_Nec)
+      }
+
+
+}
+
+```
+
+# [8] Run SIFS function sourced from `methods`
+
+```{r SIFS_function}
+# since the training set tissue sample only has two tissue ROIs, load the HMCS calcualtor Binary mode, and run it: 
+dsc_df$HMCS_VT      <- HMCS_calculatorBinary(DSC_df = dsc_df, focusROI = "VT" )
+dsc_df$HMCS_Nec     <- HMCS_calculatorBinary(DSC_df = dsc_df, focusROI = "Nec") 
+# data.table::fwrite(dsc_df, file = file.path("output/hmcs_outputs", "hmcs_binaryMode_VT_Nec.csv"))
+# HMCS_mzLists:
+hmcs_VT_mz  <- dsc_df[order(dsc_df$HMCS_VT,decreasing = TRUE),c(1,2, 4)]
+hmcs_Nec_mz <- dsc_df[order(dsc_df$HMCS_Nec,decreasing = TRUE),c(1,3, 5)]
+
+
+```
+
+# HMCS data table: 
+
+print the caculated viable tumor HMCS values based on training set: 
+
+```{r}
+
+knitr::kable(hmcs_VT_mz, format = "html")
+
+
+```
+
+
+
+
+
+### Plot top 10 HMCS VT on train and test set: 
+
+```{r}
+mzList_top10VT  <- hmcs_VT_mz$mzList[1:10]
+mzList_top10Nec <- hmcs_Nec_mz$mzList[1:10]
+# find correponding location of each list on the mzList to be plotted: 
+Loc_VT_inmzList  <- which(mzList %in% mzList_top10VT)
+Loc_Nec_inmzList <- which(mzList %in% mzList_top10Nec)
+
+for(i in Loc_VT_inmzList){
+      moleculaR:::plot.molProbMap(mpmObjects$MPM_t3[[i]], what = "MPM", figLegend = F)
+      moleculaR:::plot.molProbMap(mpmObjects$MPM_t4[[i]], what = "MPM", figLegend = F)
+}
+
+# as can be observed, the top 10 tumor masses found in the training set by HMCS are all localized in tumor in the Training set 
+# Also, they are all transferable on the testing set tissue, eventhough the testing set is completely independent and was not seen by it at any stage of the workflow. 
+
+```
+
+
+
+
+## plot HMCS of necrosis m/z list:  
+
+
+```{r hmcs_Nec}
+for(i in Loc_Nec_inmzList){
+      if(mpmObjects$MPM_t3[[i]]$sppMoi$n != 0 ){
+            print(moleculaR:::plot.molProbMap(mpmObjects$MPM_t3[[i]], what = "MPM", figLegend = F))
+            
+      } else{print("This (n) is zero")}
+      }
+      
+for(i in Loc_Nec_inmzList){
+      if(mpmObjects$MPM_t4[[i]]$sppMoi$n != 0 ){
+            print(moleculaR:::plot.molProbMap(mpmObjects$MPM_t4[[i]], what = "MPM", figLegend = F))
+            
+      } else{print("This (n) is zero")}
+      }      
+```
