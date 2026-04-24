@@ -1,2 +1,5 @@
 ^SIFS\.Rproj$
 ^\.Rproj\.user$
+^R/treeshap_run\.R$
+^R/run_treeshap_workflow\.R$
+^R/install_treeshap\.R$

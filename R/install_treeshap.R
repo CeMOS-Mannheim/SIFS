@@ -1,3 +1,2 @@
-if (!require("devtools")) install.packages("devtools", repos="https://cloud.r-project.org")
-devtools::install_github("ModelOriented/treeshap")
-q()
+if (!require("pak")) install.packages("pak", repos = "https://cloud.r-project.org")
+pak::pak("ModelOriented/treeshap")

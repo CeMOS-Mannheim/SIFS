@@ -1,9 +1,9 @@
 # Install treeshap if not available
 if (!require("treeshap", quietly = TRUE)) {
-  if (!require("devtools", quietly = TRUE)) {
-    install.packages("devtools", repos = "https://cloud.r-project.org")
+  if (!require("pak", quietly = TRUE)) {
+    install.packages("pak", repos = "https://cloud.r-project.org")
   }
-  devtools::install_github("ModelOriented/treeshap")
+  pak::pak("ModelOriented/treeshap")
 }
 
 library(treeshap)
