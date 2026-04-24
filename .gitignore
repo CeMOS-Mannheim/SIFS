@@ -5,3 +5,7 @@
 .DS_Store
 .quarto
 data
+raw
+wiki
+output
+graphify-out

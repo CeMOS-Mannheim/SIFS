@@ -1,0 +1,112 @@
+library(treeshap)
+library(shapviz)
+library(xgboost)
+library(data. table)
+library(Matrix)
+library(dplyr)
+library(ggplot2)
+
+abs_ path <- "D:/Projects/Rpackages/SIFS/"
+
+cat("Loading SPMAT objects...\n")
+t3_ spmat_ pos <- readRDS(file = file. path(abs_ path, "data/input/01_ spmatObjects/trainset_ tissue/tr_ spmat_ XIII_ t3_83318. rds"))
+t4_ spmat_ pos <- readRDS(file = file. path(abs_ path, "data/input/01_ spmatObjects/testset_ tissue/tst_ spmat_ XV_ t1_82558. rds"))
+
+lbls_ pos_ All <- readRDS(file = file. path(abs_ path, "data/input/04_ y_ lbls/spectraLblsAll/04_ Lbl_ df_ giant_ pos/Lbls_ df_ Pos_ all. rds"))
+
+ROI <- "VT"
+if (ROI == "VT") {
+  t3_ lbls <- as. factor(lbls_ pos_ All$Vt_ vs_ all_ lbls[lbls_ pos_ All$pos_ refNames == "t3"])
+  t4_ lbls <- as. factor(lbls_ pos_ All$Vt_ vs_ all_ lbls[lbls_ pos_ All$pos_ refNames == "t4"])
+}
+
+y_ train <- as. numeric(t3_ lbls)
+y_ test <- as. numeric(t4_ lbls)
+
+X_ train <- as. matrix(t3_ spmat_ pos[["spmat"]])
+X_ test <- as. matrix(t4_ spmat_ pos[["spmat"]])
+
+MZ <- round(t3_ spmat_ pos[["mzAxis"]], 6)
+
+cat("Preparing treeshap analysis...\n")
+set. seed(123)
+train_ data_ df <- as. data. frame(X_ train)
+MZ_ cols <- MZ[1:ncol(train_ data_ df)]
+colnames(train_ data_ df) <- MZ_ cols
+num_ features <- ncol(train_ data_ df)
+
+cat("Creating DMatrix with feature names...\n")
+dtrain_ named <- xgb. DMatrix(data = X_ train, label = y_ train, feature_ names = MZ_ cols)
+
+xgb_ annotated <- xgb. train( 
+  params = list(
+    objective = "binary:logistic",
+    eval_ metric = "auc",
+    max_ depth = 4,
+    eta = 0.05,
+    nthread = 4,
+    seed = 42
+  ), 
+  data = dtrain_ named,
+  nrounds = 60,
+  verbose = FALSE
+)
+
+cat("Unifying model...\n")
+unified_ model <- unify(xgb_ annotated, train_ data_ df)
+
+cat("Calculating SHAP values...\n")
+shap_ values_ treeshap <- treeshap(unified_ model, train_ data_ df, verbose = 0)
+
+cat("SHAP dimensions:", nrow(shap_ values_ treeshap$shaps), "x", ncol(shap_ values_ treeshap$shaps), "\n")
+
+cat("Analyzing mean SHAP values...\n")
+mean_ shap_ values <- colMeans(shap_ values_ treeshap$shaps)
+mean_ shap_ df <- data. frame(
+  feature = names(mean_ shap_ values),
+  mean_ shap = mean_ shap_ values
+)
+
+top_ mean_ shap_ df <- mean_ shap_ df %>%
+  arrange(desc(mean_ shap)) %>%
+  head(10)
+
+top_ negative_ shap_ df <- mean_ shap_ df %>%
+  filter(mean_ shap < 0) %>%
+  arrange(mean_ shap) %>%
+  head(10)
+
+output_ dir_ shap <- file. path(abs_ path, "data/output/SHAP_ outputs", paste0(ROI, "_treeshap"))
+dir. create(output_ dir_ shap, recursive = TRUE, showWarnings = FALSE)
+
+p_ pos <- ggplot(top_ mean_ shap_ df, aes(x = reorder(feature, mean_ shap), y = mean_ shap)) +
+  geom_ bar(stat = "identity", fill = "steelblue") +
+  coord_ flip() +
+  labs(title = "Top 10 Positive Mean SHAP Values", x = "Features", y = "Mean SHAP Value") +
+  theme_ minimal(base_ size = 15) +
+  theme(plot. title = element_ text(size = 20, face = "bold"),
+        axis. title = element_ text(size = 18),
+        axis. text = element_ text(size = 14))
+ggsave(file. path(output_ dir_ shap, "top_ mean_ shap_ values. png"), plot = p_ pos, width = 10, height = 6, dpi = 300)
+
+p_ neg <- ggplot(top_ negative_ shap_ df, aes(x = reorder(feature, mean_ shap), y = mean_ shap)) +
+  geom_ bar(stat = "identity", fill = "firebrick") +
+  coord_ flip() +
+  labs(title = "Top 10 Negative Mean SHAP Values", x = "Features", y = "Mean SHAP Value") +
+  theme_ minimal(base_ size = 15) +
+  theme(plot. title = element_ text(size = 20, face = "bold"),
+        axis. title = element_ text(size = 18),
+        axis. text = element_ text(size = 14))
+ggsave(file. path(output_ dir_ shap, "top_ negative_ mean_ shap_ values. png"), plot = p_ neg, width = 10, height = 6, dpi = 300)
+
+fwrite(top_ mean_ shap_ df, file = file. path(output_ dir_ shap, "01_ top10_ positive_ shapVals. csv"))
+fwrite(top_ negative_ shap_ df, file = file. path(output_ dir_ shap, "02_ top10_ negative_ shapVals. csv"))
+
+cat("\n=== Output Summary ===\n")
+cat("Output directory:", output_ dir_ shap, "\n")
+cat("\nTop 10 Positive Mean SHAP Values:\n")
+print(top_ mean_ shap_ df)
+cat("\nTop 10 Negative Mean SHAP Values:\n")
+print(top_ negative_ shap_ df)
+
+cat("\ntreeshap workflow completed successfully!\n")

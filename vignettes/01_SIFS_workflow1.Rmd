@@ -29,7 +29,12 @@ This is an end to end pipeline in R to perform SIFS workflow on two tissue sampl
 
 ```{r loadSIFS, message=FALSE, warning=FALSE}
 # install.packages("remotes")
-remotes::install_github("CeMOS-Mannheim/SIFS")
+if(!"SIFS" %in% rownames(installed.packages())){
+  print("The SIFS package is not installed on your System, yet!")
+  remotes::install_github("CeMOS-Mannheim/SIFS")
+  
+  } else{print("The SIFS package is already available.")}
+
 library(SIFS)
 ```
 
@@ -41,11 +46,11 @@ needed variables Are: {input, output, ionization, Alpha, ROIs, comparisonNum, cu
 
 ```{r}
 # [0] globally important variables
-
+root_dir = file.path("D:/Projects/Rpackages/SIFS/")
 # I/O of this project: 
 
-in_project  = "~/04_End2End_SIFS/input/"
-out_project ="~/04_End2End_SIFS/output/"
+in_project  = file.path("data/", "input") # files to be used as inputs.
+out_project = file.path("data/output/")   # files to be used as intermediate outputs.
 
 
 ## set alpha for transparency control of multimodal integration
@@ -79,18 +84,18 @@ if(ROI == "VT"){
 
 
 
-absPath = file.path("~/04_End2End_SIFS") # path to project directory: 
+absPath = root_dir # path to project directory: 
 # root dir for the different inputs: 
 
-input_main = file.path(absPath, "input")
+input_main = file.path(absPath, "data/input")
 output_main <- switch(selected_ionisation,
                       "pos" = {
-                          dir_path <- file.path(absPath, "output", "01_pos", "12_multimodalIntgrtion_mz")
+                          dir_path <- file.path(absPath, "data/output", "01_pos", "12_multimodalIntgrtion_mz")
                           if (!file.exists(dir_path)) dir.create(dir_path, recursive = TRUE)
                           dir_path
                       },
                       "neg" = {
-                          dir_path <- file.path(absPath, "output", "02_neg", "12_multimodalIntgrtion_mz")
+                          dir_path <- file.path(absPath, "data/output", "02_neg", "12_multimodalIntgrtion_mz")
                           if (!file.exists(dir_path)) dir.create(dir_path, recursive = TRUE)
                           dir_path
                       },
@@ -116,6 +121,7 @@ if(SelSHAP == "PosSHAP"){
        mzList = c()} else{
        mzList = c()}
 cat("the selected m/z list for this workflow is: \n",mzList)
+print(mzList)
 ```
 
 
@@ -135,8 +141,8 @@ testSetNames  = t_names[!t_names%in%trainSetNames]
 
 # Requirement 1) load mis files, so as to get tissue boundary and annotations if needed. 
 
-TrainingSetMis = file.path(absPath, "input", "0_mis_files/mis_XIII_t3_83318_trainSet.rds") # training set mis file: 
-TestingSetMis  = file.path(absPath, "input", "0_mis_files/mis_XV_t2_82558_testSet.rds")
+TrainingSetMis = file.path(absPath, "data/input", "0_mis_files/mis_XIII_t3_83318_trainSet.rds") # training set mis file: 
+TestingSetMis  = file.path(absPath, "data/input", "0_mis_files/mis_XV_t2_82558_testSet.rds")
 
 ## read mis files below, from RDS files: 
 t3_mis   <- readRDS(file = TrainingSetMis) # this reads Training Set mis file.
@@ -212,16 +218,16 @@ AbsPath  = absPath
 # Read sparse intensity matrices (SPMAT objects): 
 
 # 01: spmat for training set (t3)
-t3_spmat_pos <- readRDS(file = file.path(AbsPath, "input/01_spmatObjects/trainset_tissue/tr_spmat_XIII_t3_83318.rds"))
+t3_spmat_pos <- readRDS(file = file.path(AbsPath, "data/input/01_spmatObjects/trainset_tissue/tr_spmat_XIII_t3_83318.rds"))
 # 02: spmat for testing set (t4)
-t4_spmat_pos <- readRDS(file = file.path(AbsPath, "input/01_spmatObjects/testset_tissue/tst_spmat_XV_t1_82558.rds"))
+t4_spmat_pos <- readRDS(file = file.path(AbsPath, "data/input/01_spmatObjects/testset_tissue/tst_spmat_XV_t1_82558.rds"))
 
 
 
 
 # Read labels and split by tissue sample:
 # Read in all labels for all tissues, not needed for this example workflow: 
-lbls_pos_ALL  <- readRDS(file = file.path(AbsPath, "input/04_y_lbls/spectraLblsAll/04_Lbl_df_giant_pos/Lbls_df_Pos_all.rds"))
+lbls_pos_ALL  <- readRDS(file = file.path(AbsPath, "data/input/04_y_lbls/spectraLblsAll/04_Lbl_df_giant_pos/Lbls_df_Pos_all.rds"))
 # Define a function to create coordinates matrix for each patient:
 
 split_lbls <- split(lbls_pos_ALL, lbls_pos_ALL$pos_refNames)
@@ -255,6 +261,9 @@ labels must be extracted from .mis files, then vectorised, this workflow shows a
 ```{r}
 # lbls_pos$pos_refNames %>% table()
 # [ROI options]: "VT"     "Nec"    "PreNec"
+
+
+
 if(ROI == "VT"){
       # XIII-t3 83318 TrainingSet lables: 
       t3_lbls = lbls_pos$Vt_vs_all_lbls[lbls_pos$pos_refNames == "t3"]
@@ -300,246 +309,736 @@ SPMAT stands for sparse intensity matrix, for faster computation.
 
 
 
+# Recheck thoroughly: 
+
+```{r}
+
 # Run python chunks: 
 
-- Run SHAP pipeline from python
+## - Run SHAP pipeline from R
+# install.packages("xgboost")
+# [02] Load needed R libraries
+library(xgboost)
+# library(shapr) # install using: install.packages("shapr")
+library(data.table)
+library(Matrix)
 
-```{python }
-reticulate::repl_python()
-# [02] Load needed libraries
-import shap
-import time
-import joblib
-import pickle 
-import sys, os
-import numpy as np
-import scienceplots
-import pandas as pd
-import seaborn as sns
-from xgboost import XGBClassifier
-from sklearn.metrics import confusion_matrix
-from sklearn.model_selection import GridSearchCV
-from sklearn.model_selection import GridSearchCV
-from sklearn.feature_selection import SelectPercentile, chi2
-np.random.seed(2022)
+# Convert labels to numeric (0/1)
+y_train <- as.numeric(t3_lbls) #- 1  # Convert from 1/2 to 0/1
+y_test <- as.numeric(t4_lbls) #- 1
 
+# Check label distribution
+cat("Training labels table:\n")
+print(table(y_train))
+cat("Test labels table:\n")
+print(table(y_test))
 
-# the labels are encoded as string in the R side, here one needs to conver it to ineger values: 
+# Convert sparse matrix to dense matrix
+X_train <- as.matrix(t3_spmat_pos[["spmat"]])
+X_test <- as.matrix(t4_spmat_pos[["spmat"]])
 
-y_train = [int(i) for i in r.t3_lbls]
-y_test  = [int(i) for i in r.t4_lbls]
-
-# check shape of each of the label vars: 
-def lbl_tabulator(lbl): 
-      categories = sorted(set(lbl))
-      result = {
-            "categories" : categories, 
-            "counts"     : [lbl.count(i) for i in categories],
-            "lbl_length" : len(lbl)
-            }
-      return(result)
-      
-print(lbl_tabulator(lbl = y_train))
-print(lbl_tabulator(lbl = y_test))
-
-# load spars
-# t3 = r.t3_spmat["spmat"].toarray() # conver this a dense matrix. 
-
-def xgb_classifier(X, y, is_default=True):
-    if is_default:
-        xgb_default = XGBClassifier(
-            objective='binary:logistic',
-            nthread=34,
-            learning_rate=0.05,
-            n_estimators=60,
-            max_depth=4,
-            seed=42
-        )
-        xgb_default.fit(X, y)
-        return {"xgb_bst": xgb_default, "params_bst": "defaults_used"}
-        
-    else:
-        # Perform feature selection
-        fs = SelectPercentile(chi2, percentile=20)
-        x_train_fs = fs.fit_transform(X, y)
-        
-        param_grid = {
-            'learning_rate': [0.05, 0.01, 0.1],
-            'max_depth': [4, 6],
-            'n_estimators': [50, 60, 80],
-        }
-        # use number of threads wisely. 
-        grid_search = GridSearchCV(
-            estimator=XGBClassifier(objective='binary:logistic', nthread=4, seed=42),
-            param_grid=param_grid,
-            scoring='roc_auc',
-            cv=4,
-            n_jobs=-1
-        )
-        
-        grid_search.fit(x_train_fs, y)
-        best_params = grid_search.best_params_
-        
-        xgb_best = XGBClassifier(
-            objective='binary:logistic',
-            nthread=30,
-            seed=42,
-            learning_rate=best_params['learning_rate'],
-            max_depth=best_params['max_depth'],
-            n_estimators=best_params['n_estimators']
-        )
-        xgb_best.fit(x_train_fs, y)
-        
-        return {"xgb_bst": xgb_best, "params_bst": best_params}
-        
-# Example usage
-start_time = time.time()
-model_result = xgb_classifier(X=r.t3_spmat_pos["spmat"], y=y_train, is_default=False) # hyperparameter tuning
-end_time = time.time()
-print(f"Elapsed time: {end_time - start_time:.2f} seconds")
-
-print(model_result["params_bst"])
-
-
-# {'learning_rate': 0.1, 'max_depth': 6, 'n_estimators': 50}
-
-bst_lr          = model_result["params_bst"]["learning_rate"]
-bst_max_depth   = model_result["params_bst"]["max_depth"]
-bst_n_estimator = model_result["params_bst"]["n_estimators"]
-
-
-# dump the classifier in the output directory: 
-
-location = r.AbsPath+"/output/models/"
-ROI = r.ROI
-print(f'your selected ROI from the R side is: \n {ROI}')
-joblib.dump(model_result, f'{location}00_HyperParamTuned_xgb_Giant_binary_Full_mz_{ROI}.pkl')
-joblib.dump(model_result["xgb_bst"], f'{location}01_xgb_Giant_binary_Full_mz_{ROI}.pkl')
-```
-
-
-
-## train the best & final XGB classifier
-
-This is already optimized for this dataset, training was performed on a cluter computing platform (Linux OS)
-
-change the number of threads based on your PC. 
-
-```{python }
-
-MZ = [round(i, 6) for i in r.t3_spmat_pos["mzAxis"]]# mzList 
-# best model:
-x_train = r.t3_spmat_pos["spmat"].toarray()
-x_test  = r.t4_spmat_pos["spmat"].toarray()
-xgb_best = XGBClassifier(
-            # objective='binary:logistic',
-            nthread=30,
-            seed=42,
-            #num_class=1,
-            learning_rate= bst_lr,
-            max_depth= bst_max_depth,
-            n_estimators=bst_n_estimator)
-xgb_best.fit(x_train, y_train)
-x_train_df = pd.DataFrame(x_train, columns=MZ)
-x_test_df  = pd.DataFrame(x_test, columns=MZ)
-```
-
-
-# deposite outputs to output
-
-```{python }
-
-shap_values = shap.TreeExplainer(xgb_best).shap_values(x_test_df)
+# Check for any issues
+cat("X_train dimensions:", dim(X_train), "\n")
+cat("X_test dimensions:", dim(X_test), "\n")
+cat("Any NA in X_train:", anyNA(X_train), "\n")
+cat("Any NA in y_train:", anyNA(y_train), "\n")
 
 ```
 
 
-plot sha values: 
+# The following code snippet requires ML and XAI knowledge
 
-
-```{python }
-import matplotlib.pyplot as plt
-plt.figure(figsize=(10, 8))  # Wider plot
-shap.bar_plot(shap_values[0], feature_names=x_test_df.columns, max_display=20, show=False)
-
-wDir = r.AbsPath+"/output/"
-plt.savefig(f"{wDir}/plots/01_shap_bar_plot_{ROI}_lbls.jpg", dpi=300, bbox_inches='tight', format = "jpeg")  # High resolution
-plt.close()
-```
+-- Adapt accordingly.
 
 
 
-- Save shap dataframe: 
 
-```{python }
 
-ShapVals_df = pd.DataFrame(shap_values[0], index = x_test_df.columns )
-n_features = ShapVals_df.shape[0]
-def SHAP_forClass(ShapVals_df = ShapVals_df, tissueClass = "tumor", n_features = n_features):
-    tissueClass = tissueClass.lower()
-    if tissueClass == "tumor": 
-        DF_sortedTumor = ShapVals_df.sort_values(by=0, ascending=False)
-        return DF_sortedTumor.head(n_features)
-    else: 
-        DF_sortedNon_tumor = ShapVals_df.sort_values(by=0, ascending=True)
-        return DF_sortedNon_tumor.head(n_features)
-Tumor_Shaps = SHAP_forClass(ShapVals_df, tissueClass = "tumor", n_features = n_features) 
-print(Tumor_Shaps.head(2))
-# non-tumor Shaps
-Non_tumor_Shaps = SHAP_forClass(ShapVals_df, tissueClass = "NonT", n_features = n_features) 
-print(Non_tumor_Shaps.head(2))
+# 3) train xgboost
+- Create intensity matrices out of the "trainSet" and "testSet" objects. 
+- Split the spectra from training set into train and validation sub-sets. Then, train the model and test on the validation set. 
+
+```{r}
+# creaet sparse matrix from trainSet and testSet objects. 
+# trainSet_spmat <- moleculaR::createSparseMat(trainSet)
+# testSet_spmat  <- moleculaR::createSparseMat(testSet)
+trainSet_spmat <- t3_spmat_pos  # this is the sparse intensity matrix of the training set: 23.04.2026
+testSet_spmat  <- t4_spmat_pos
+gc(full = T)
 ```
 
 
 
 
-
-```{python }
-# This saves SHAP values for the class of interest (ex VT+VTv) arranged based on the classification task: 
-
-output_dirs = f"{wDir}/SHAP_outputs/"
-Positive_SHAP_values = Tumor_Shaps
-posDF = Positive_SHAP_values[0].reset_index()
-posDF.columns = ["mz_list", "Pos_Shaps"]
+### checkPpoint directory
 
 
-NegativeSHAP_values = Non_tumor_Shaps
-NegativeSHAP_values = NegativeSHAP_values[0].reset_index()
-NegativeSHAP_values.columns = ["mz_list", "Neg_Shaps"]
+_______________________ CheckPoint  _______________________
 
 
-# Save to dir: 
-VT_ROIFolder, Nec_ROIFolder,PreNec_ROIFolder = "VT_SHAPs", "Nec_SHAPs","PreNec_SHAPs"
-if(ROI == "VT"): 
-      posDF.to_csv(f"{output_dirs}/{VT_ROIFolder}/PostiveSHAP_value_{ROI}_DF_lbl.csv", index = False)
-      NegativeSHAP_values.to_csv(f"{output_dirs}/{VT_ROIFolder}/NegativeSHAP_value_{ROI}_DF_lbl.csv", index = False)
-elif(ROI == "Nec"): 
-      posDF.to_csv(f"{output_dirs}/{Nec_ROIFolder}/PostiveSHAP_values_{ROI}_DF_lbl.csv", index = False)
-      NegativeSHAP_values.to_csv(f"{output_dirs}/{Nec_ROIFolder}/NegativeSHAP_value_{ROI}_DF_lbl.csv", index = False)
-else: 
-      posDF.to_csv(f"{output_dirs}/{PreNec_ROIFolder}/PostiveSHAP_value_{ROI}_DF_lbl.csv", index = False)
-      NegativeSHAP_values.to_csv(f"{output_dirs}/{PreNec_ROIFolder}/NegativeSHAP_value_{ROI}_DF_lbl.csv", index = False)
+```{r}
+
+# Checkpoint directory: 
+checkPointDir <- AbsPath
+
+# save processed and extracted sparse matrices: 
+saveRDS(object = trainSet_spmat, file = file.path(checkPointDir, "data/input/trainSet_spmat.rds"))
+saveRDS(object = testSet_spmat, file = file.path(checkPointDir, "data/input/testSet_spmatSet_spmat.rds"))
+saveRDS(object = trainSet_spmat$mzAxis, file = file.path(checkPointDir, "data/input/colNames.rds"))
+
+gc(full= TRUE)
+
+```
+
+
+### ReLoad: 
+
+```{r Reload}
+# reload all the components needed:
+checkPointDir <- AbsPath
+trainSet_spmat <- readRDS(file.path(checkPointDir, "data/input/trainSet_spmat.rds"))
+testSet_spmat  <- readRDS(file.path(checkPointDir, "data/input/testSet_spmatSet_spmat.rds"))
+colNames       <- readRDS(file.path(checkPointDir, "data/input/colNames.rds"))
+
+# Also reload original spmat objects for spatial window creation
+t3_spmat_pos <- readRDS(file = file.path(checkPointDir, "data/input/01_spmatObjects/trainset_tissue/tr_spmat_XIII_t3_83318.rds"))
+t4_spmat_pos <- readRDS(file = file.path(checkPointDir, "data/input/01_spmatObjects/testset_tissue/tst_spmat_XV_t1_82558.rds"))
+
+message("Reload chunk: t3_spmat_pos loaded: ", exists("t3_spmat_pos"), ", t4_spmat_pos loaded: ", exists("t4_spmat_pos"))
 ```
 
 
 
-Clean-up Python Session
 
-```{python }
-# remove all variables in this python session:
-def clear_all():
-      for name in list(globals()):
-            if not name.startswith("_") and name not in ['clear_all']:
-                  del globals()[name]
-                  
-clear_all()
+# get labels for the training set: 
+
+
+```{r lbls_trainset}
+
+library(dplyr)
+# the training set tissue sample here is referebced as "t3" 
+## find index of training set labels: 
+index_lbls <- which(lbls_pos_ALL$pos_refNames == "t3")
+# extract tissue 3 as the training set labels: 
+
+Subset_labelsDF <- lbls_pos_ALL[index_lbls, ]
+
+binary_t1_lbls <- Subset_labelsDF$Vt_vs_all_lbls
+binary_t1_lbls <- as.numeric(as.character(binary_t1_lbls))
+# the length of this labels vector for this tissue sample : 3660 pixels
+```
+
+## create dense matrices with their mz value names: 
+
+```{r dense_matrix}
+# get column names: 
+mz_trainSet <- trainSet_spmat$mzAxis
+mz_testSet  <- testSet_spmat$mzAxis
+# Get the SPMAT objects out:
+trainMat      <- trainSet_spmat$spmat 
+testMat       <- testSet_spmat$spmat 
+# Convert to dense matrices :-
+trainMat <- Matrix::as.matrix(trainMat)
+testMat  <- Matrix::as.matrix(testMat)
+
+
+gc(full = T)
+
+```
+
+
+## add labels to trainMat 
+```{r}
+# the following creates a new that has the labels at the last column.
+trainMat <- cbind(trainMat, binary_t1_lbls)
+
+```
+
+
+- install caret --> install.packages("caret", dependencies = c("Depends", "Suggests"))
+- split to 20% by 80% samples
+
+# convert training matrix to dataframe: 
+```{r}
+trainMat <- as.data.frame(trainMat)
+colNames <- c(mz_trainSet, "target")
+colnames(trainMat) <- colNames
+
+
+gc(full = TRUE)
+```
+
+
+```{r SplitData}
+library(caret)
+
+# 'trainMat' is training data set and the last column is the target variable
+set.seed(123)  # For reproducibility
+splitIndex <- createDataPartition(trainMat$target, p = 0.8, list = FALSE)
+
+# Split the data into training and validation sets
+train_data <- trainMat[splitIndex, ]
+validation_data <- trainMat[-splitIndex, ]
+
+gc()
+
+
+```
+
+# Convert to Numeric feature matrix
+
+the above processing converts the feature matrix to str, now they must be converted back to numeric values. 
+
+
+```{r}
+library(dplyr)
+# the following does the conversion: 
+train_data <- mutate_all(train_data, function(x) as.numeric(as.character(x)))
+validation_data <- mutate_all(validation_data, function(x) as.numeric(as.character(x)))
+
+gc(full = T)
 
 ```
 
 
 
 
-# SHAP filter application 
+```{r xgbData}
+# Convert datasets to xgboost's DMatrix format
+train_label       <- train_data$target
+train_matrix      <- xgb.DMatrix(data = as.matrix(train_data %>% select(-target)), label = train_label)
+
+validation_label  <- validation_data$target
+validation_matrix <- xgb.DMatrix(data = as.matrix(validation_data %>% select(-target)), label = validation_label)
+
+```
+
+
+# Free space: 
+
+remove duplicated variables that are no-longer needed. 
+```{r}
+rm(t3_spmat_pos, t3_mis, t4_mis, t4_spmat_pos, testSet_spmat, testMat, trainMat, trainSet_spmat, X_test)
+gc(full = TRUE)
+
+```
+
+
+
+
+
+
+
+## Define Hyperparameter Tuning Grid
+
+```{r}
+# # Define a grid of hyperparameters for tuning
+# xgb_grid <- expand.grid(
+#   nrounds = c(100, 200),              # Number of boosting rounds
+#   eta = c(0.01, 0.1, 0.3),            # Learning rate
+#   max_depth = c(3, 6, 9),             # Depth of trees
+#   gamma = c(0, 0.1, 0.3),             # Minimum loss reduction
+#   colsample_bytree = c(0.6, 0.8, 1),  # Column sampling by tree
+#   min_child_weight = c(1, 3, 5),      # Minimum sum of instance weight
+#   subsample = c(0.5, 0.7, 1)          # Subsample ratio
+# )
+
+```
+
+
+##  Define xgboost Training Control
+
+```{r}
+
+# train_control <- trainControl(
+#   method = "cv",                # Cross-validation method
+#   number = 5,                   # 5-fold cross-validation
+#   verboseIter = TRUE,           # Show training progress
+#   allowParallel = TRUE          # Allow parallel processing if available
+# )
+
+```
+
+
+
+
+## Train the model 
+```{r}
+# Train the model with hyperparameter tuning
+# xgb_tune <- train(
+#   x = as.matrix(train_data %>% select(-target)),  # Features
+#   y = train_data$target,                          # Target variable
+#   trControl = train_control,                      # Cross-validation settings
+#   tuneGrid = xgb_grid,                            # Hyperparameter grid
+#   method = "xgbTree",                             # xgboost method
+#   verbose = TRUE,                                  # Enable verbosity
+#   objective = "binary:logistic"
+#   
+#   )
+
+```
+
+## Best hyper parameters: 
+
+nrounds = 200
+max_depth = 6
+eta = 0.1
+gamma = 0
+colsample_bytree = 0.6
+min_child_weight = 3
+subsample = 1
+
+
+
+
+
+## train a final model with binary:logisic param
+
+- the xgboost outputs were based on regression, which is not the same as prediction probabilities: 
+
+
+```{r}
+
+
+library(xgboost)
+
+# Ensure matrix format
+X <- as.matrix(train_data[, setdiff(names(train_data), "target")])
+y <- as.numeric(as.character(train_data$target))  # must be 0/1, ensure numeric
+
+dtrain <- xgb.DMatrix(data = X, label = y)
+
+params <- list(
+  objective = "binary:logistic",
+  max_depth = 6,
+  eta = 0.1,
+  gamma = 0,
+  colsample_bytree = 0.6,
+  min_child_weight = 3,
+  subsample = 1,
+  eval_metric = "logloss"
+)
+
+model <- xgb.train(
+  params = params,
+  data = dtrain,
+  nrounds = 200
+)
+
+
+```
+
+
+```{r}
+gc(full= TRUE)
+```
+
+
+# 1. Evaluation (Updated for xgboost)
+
+```{r}
+# Ensure target is numeric 0/1
+validation_y <- as.numeric(as.character(validation_data$target))
+
+# Build feature matrix (exclude target)
+validation_matrix <- as.matrix(
+  validation_data[, setdiff(colnames(validation_data), "target")]
+)
+
+dvalid <- xgb.DMatrix(data = validation_matrix)
+
+# Predict probabilities
+validation_pred_prob <- predict(model, dvalid)
+
+# Binarize at 0.5 threshold
+validation_pred_binary <- ifelse(validation_pred_prob >= 0.5, 1, 0)
+
+# Convert to factor for confusionMatrix
+# library(caret)
+
+confusionMatrix(
+  factor(validation_pred_binary, levels = c(0,1)),
+  factor(validation_y, levels = c(0,1))
+)
+
+
+```
+
+
+# 2. Save the Model
+
+```{r}
+
+
+# Save full model object
+saveRDS(model, file = file.path(checkPointDir, "data/input/best_xgboost_model.rds"))
+
+# Optional: save in native xgboost binary format (more portable)
+xgb.save(model, file.path(checkPointDir, "data/input/best_xgboost_model.bin"))
+
+```
+
+
+# 3. ROC + AUC (Plots)
+
+
+```{r}
+library(pROC)
+library(ggplot2)
+
+roc_curve <- roc(validation_y, validation_pred_prob)
+
+# Create ROC dataframe
+roc_data <- data.frame(
+  FPR = rev(roc_curve$specificities),
+  TPR = rev(roc_curve$sensitivities),
+  thresholds = rev(roc_curve$thresholds)
+)
+
+roc_plot <- ggplot(roc_data, aes(x = FPR, y = TPR)) +
+  geom_line(size = 1.2) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+  labs(
+    title = "ROC Curve",
+    x = "False Positive Rate",
+    y = "True Positive Rate"
+  ) +
+  theme_minimal() +
+  coord_fixed() +
+  xlim(0,1) +
+  ylim(0,1)
+
+
+
+cat("AUC:", auc(roc_curve), "\n")
+
+
+print(roc_plot)
+
+```
+
+
+
+
+# XAI chunks: 
+
+## 1) SHAP computation (unified, corrected)
+
+
+
+```{r}
+
+# --- Libraries ---
+library(treeshap)
+library(xgboost)
+library(ggplot2)
+library(data.table)
+
+xai_feature_cols <- setdiff(names(train_data), "target")
+xai_train_df <- train_data[, xai_feature_cols, drop = FALSE]
+xai_train_matrix <- as.matrix(xai_train_df)
+xai_train_idx <- as.integer(splitIndex)
+roi_label_map <- c(
+  VT = "Vt_vs_all_lbls",
+  Nec = "Nec_vs_all_lbls",
+  PreNec = "PreNec_vs_all_lbls"
+)
+shap_output_root <- file.path(AbsPath, "output/SHAP_outputs")
+
+dir.create(shap_output_root, recursive = TRUE, showWarnings = FALSE)
+
+xai_xgb_params <- list(
+  objective = "binary:logistic",
+  max_depth = 6,
+  eta = 0.1,
+  gamma = 0,
+  colsample_bytree = 0.6,
+  min_child_weight = 3,
+  subsample = 1,
+  eval_metric = "logloss"
+)
+xai_nrounds <- 200L
+roi_shap_results <- list()
+
+xai_unify_xgboost <- function(xgb_model, data) {
+  xgbtree <- xgboost::xgb.model.dt.tree(model = xgb_model)
+
+  if (!("Gain" %in% colnames(xgbtree)) && "Quality" %in% colnames(xgbtree)) {
+    xgbtree$Gain <- xgbtree$Quality
+  }
+
+  stopifnot(
+    c(
+      "Tree", "Node", "ID", "Feature", "Split",
+      "Yes", "No", "Missing", "Gain", "Cover"
+    ) %in% colnames(xgbtree)
+  )
+
+  xgbtree$Yes <- match(xgbtree$Yes, xgbtree$ID)
+  xgbtree$No <- match(xgbtree$No, xgbtree$ID)
+  xgbtree$Missing <- match(xgbtree$Missing, xgbtree$ID)
+  xgbtree[is.na(xgbtree$Split), "Feature"] <- NA_character_
+  xgbtree$Decision.type <- factor(rep("<=", nrow(xgbtree)), levels = c("<=", "<"))
+  xgbtree$Decision.type[is.na(xgbtree$Feature)] <- NA_character_
+  xgbtree <- xgbtree[, c(
+    "Tree", "Node", "Feature", "Decision.type", "Split",
+    "Yes", "No", "Missing", "Gain", "Cover"
+  )]
+  colnames(xgbtree) <- c(
+    "Tree", "Node", "Feature", "Decision.type", "Split",
+    "Yes", "No", "Missing", "Prediction", "Cover"
+  )
+  xgbtree$Prediction[!is.na(xgbtree$Feature)] <- NA_real_
+
+  feature_names <- tryCatch(
+    xgboost::getinfo(xgb_model, "feature_name"),
+    error = function(e) NULL
+  )
+  if (is.null(feature_names) || !length(feature_names)) {
+    feature_names <- colnames(data)
+  }
+
+  if (all(feature_names %in% colnames(data))) {
+    data <- data[, feature_names, drop = FALSE]
+  }
+
+  unified_model <- list(
+    model = as.data.frame(xgbtree),
+    data = as.data.frame(data),
+    feature_names = feature_names
+  )
+  class(unified_model) <- "model_unified"
+  attr(unified_model, "missing_support") <- TRUE
+  attr(unified_model, "model") <- "xgboost"
+  unified_model
+}
+
+for (roi_name in ROIs) {
+  raw_labels <- as.character(Subset_labelsDF[[roi_label_map[[roi_name]]]][xai_train_idx])
+
+  if (length(unique(raw_labels)) < 2) {
+    message(
+      "Skipping ", roi_name,
+      " SHAP because only one raw class is present in the training split."
+    )
+    next
+  }
+
+  target_is_roi <- ifelse(raw_labels == "1", 1L, 0L)
+  roi_dtrain <- xgb.DMatrix(
+    data = xai_train_matrix,
+    label = target_is_roi
+  )
+
+  roi_model <- xgb.train(
+    params = xai_xgb_params,
+    data = roi_dtrain,
+    nrounds = xai_nrounds,
+    verbose = 0
+  )
+
+  roi_unified_model <- tryCatch(
+    treeshap::unify(roi_model, xai_train_df),
+    error = function(e) {
+      message(
+        "Using xgboost compatibility unifier for ", roi_name,
+        ": ", conditionMessage(e)
+      )
+      xai_unify_xgboost(roi_model, xai_train_df)
+    }
+  )
+  roi_treeshap <- treeshap::treeshap(
+    roi_unified_model,
+    xai_train_df,
+    verbose = FALSE
+  )
+
+  target_rows <- target_is_roi == 1L
+  target_shaps <- roi_treeshap$shaps[target_rows, , drop = FALSE]
+  mean_target_shap <- colMeans(target_shaps)
+  mz_values <- as.numeric(names(mean_target_shap))
+
+  roi_output_dir <- file.path(shap_output_root, paste0(roi_name, "_SHAPs"))
+  dir.create(roi_output_dir, recursive = TRUE, showWarnings = FALSE)
+
+  positive_shap_df <- data.table(
+    mz_list = mz_values,
+    Pos_Shaps = as.numeric(mean_target_shap)
+  )[order(-Pos_Shaps)]
+
+  negative_shap_df <- data.table(
+    mz_list = mz_values,
+    Neg_Shaps = as.numeric(mean_target_shap)
+  )[order(Neg_Shaps)]
+
+  data.table::fwrite(
+    positive_shap_df,
+    file = file.path(
+      roi_output_dir,
+      paste0("PostiveSHAP_value_", roi_name, "_DF_lbl.csv")
+    )
+  )
+  data.table::fwrite(
+    negative_shap_df,
+    file = file.path(
+      roi_output_dir,
+      paste0("NegativeSHAP_value_", roi_name, "_DF_lbl.csv")
+    )
+  )
+
+  roi_shap_results[[roi_name]] <- list(
+    target_rows = target_rows,
+    target_shaps = target_shaps,
+    target_values = xai_train_df[target_rows, , drop = FALSE],
+    mean_target_shap = mean_target_shap,
+    roi_output_dir = roi_output_dir
+  )
+
+  message("Saved SHAP outputs for ", roi_name, " to ", roi_output_dir)
+}
+
+if (ROI %in% names(roi_shap_results)) {
+  active_shap <- roi_shap_results[[ROI]]
+
+  mean_abs_shap <- sort(colMeans(abs(active_shap$target_shaps)), decreasing = TRUE)
+  mean_pos_shap <- sort(
+    active_shap$mean_target_shap[active_shap$mean_target_shap > 0],
+    decreasing = TRUE
+  )
+  mean_neg_shap <- sort(
+    active_shap$mean_target_shap[active_shap$mean_target_shap < 0],
+    decreasing = FALSE
+  )
+
+  mean_abs_df <- data.frame(
+    feature = names(head(mean_abs_shap, 20)),
+    mean_abs_shap = as.numeric(head(mean_abs_shap, 20))
+  )
+  mean_pos_df <- data.frame(
+    feature = names(head(mean_pos_shap, 10)),
+    mean_shap = as.numeric(head(mean_pos_shap, 10))
+  )
+  mean_neg_df <- data.frame(
+    feature = names(head(mean_neg_shap, 10)),
+    mean_shap = as.numeric(head(mean_neg_shap, 10))
+  )
+
+  mean_abs_plot <- ggplot(
+    mean_abs_df,
+    aes(x = reorder(feature, mean_abs_shap), y = mean_abs_shap)
+  ) +
+    geom_col(fill = "steelblue") +
+    coord_flip() +
+    labs(
+      title = paste0(ROI, " target-class mean |SHAP|"),
+      x = "m/z",
+      y = "Mean absolute SHAP"
+    ) +
+    theme_minimal()
+
+  mean_pos_plot <- ggplot(
+    mean_pos_df,
+    aes(x = reorder(feature, mean_shap), y = mean_shap)
+  ) +
+    geom_col(fill = "darkgreen") +
+    coord_flip() +
+    labs(
+      title = paste0(ROI, " top positive target-class SHAP"),
+      x = "m/z",
+      y = "Mean SHAP"
+    ) +
+    theme_minimal()
+
+  mean_neg_plot <- ggplot(
+    mean_neg_df,
+    aes(x = reorder(feature, mean_shap), y = mean_shap)
+  ) +
+    geom_col(fill = "firebrick") +
+    coord_flip() +
+    labs(
+      title = paste0(ROI, " top negative target-class SHAP"),
+      x = "m/z",
+      y = "Mean SHAP"
+    ) +
+    theme_minimal()
+
+  print(mean_abs_plot)
+  print(mean_pos_plot)
+  print(mean_neg_plot)
+
+  ggsave(
+    filename = file.path(
+      active_shap$roi_output_dir,
+      paste0(ROI, "_target_class_mean_abs_shap.png")
+    ),
+    plot = mean_abs_plot,
+    width = 10,
+    height = 6,
+    dpi = 300
+  )
+  ggsave(
+    filename = file.path(
+      active_shap$roi_output_dir,
+      paste0(ROI, "_target_class_positive_shap.png")
+    ),
+    plot = mean_pos_plot,
+    width = 10,
+    height = 6,
+    dpi = 300
+  )
+  ggsave(
+    filename = file.path(
+      active_shap$roi_output_dir,
+      paste0(ROI, "_target_class_negative_shap.png")
+    ),
+    plot = mean_neg_plot,
+    width = 10,
+    height = 6,
+    dpi = 300
+  )
+
+  dependence_feature <- if (nrow(mean_pos_df) > 0) {
+    mean_pos_df$feature[[1]]
+  } else {
+    mean_abs_df$feature[[1]]
+  }
+
+  dependence_df <- data.frame(
+    feature_value = active_shap$target_values[[dependence_feature]],
+    shap_value = active_shap$target_shaps[, dependence_feature],
+    feature = dependence_feature
+  )
+
+  dependence_plot <- ggplot(
+    dependence_df,
+    aes(x = feature_value, y = shap_value)
+  ) +
+    geom_point(alpha = 0.6, color = "navy") +
+    labs(
+      title = paste0(ROI, " dependence plot: ", dependence_feature),
+      x = paste0("Feature intensity (m/z ", dependence_feature, ")"),
+      y = "SHAP value"
+    ) +
+    theme_minimal()
+
+  print(dependence_plot)
+
+  ggsave(
+    filename = file.path(
+      active_shap$roi_output_dir,
+      paste0(ROI, "_target_class_dependence_", dependence_feature, ".png")
+    ),
+    plot = dependence_plot,
+    width = 10,
+    height = 6,
+    dpi = 300
+  )
+} else {
+  message("No eligible SHAP result available for the active ROI: ", ROI)
+}
+```
+
+# SHAP filter application
 
 use  `SIFS::Zero_remover()`  method 
 
@@ -581,11 +1080,15 @@ SHAP_df = cbind(VT_shap_df_Sorted, Nec_shap_csv_Sorted)
 
 colnames(SHAP_df) = c("mzList", paste0(ROIs[1],"_SHAP"), "mzList_2",paste0(ROIs[2],"_SHAP") )
 
-SHAP_df = SHAP_df[, -c("mzList_2")] # this dataframe has the shape: (13144 x  3) before zeroSHAP remover application: 
+SHAP_df = SHAP_df[, -c("mzList_2")]
+SHAP_df = as.data.table(SHAP_df)
 
-SHAP_df_zeroRM = Zero_remover(df = SHAP_df, col_idx = 2:3) # removes zero across {VT,Nec} SHAP values here 
+cols_to_check <- 2:3
+mat <- as.matrix(SHAP_df[, ..cols_to_check])
+SHAP_df_zeroRM <- SHAP_df[rowSums(mat) != 0] 
 
 # yields a dimension of (1359 X  3) removing 89.7% of the features. 
+# for the t3_tissue it reduces it to 1473 which is 89.9% reduction
 ```
 
 
@@ -621,18 +1124,25 @@ use `SIFS::HMCS_calculatorBinary()` method from SIFS package.
 
 this requires:
 
-- spatial windows, depends on `moleculaR` pacakge: 
+- spatial windows, depends on `moleculaR` package: 
 
-- precalculated FWHM
+- pre-calculated FWHM
 
 
 ```{r}
 
 # create SPWIN object for each tissue sample: 
+if (!exists("t3_spmat_pos")) {
+  t3_spmat_pos <- readRDS(file = file.path(checkPointDir, "data/input/01_spmatObjects/trainset_tissue/tr_spmat_XIII_t3_83318.rds"))
+}
+if (!exists("t4_spmat_pos")) {
+  t4_spmat_pos <- readRDS(file = file.path(checkPointDir, "data/input/01_spmatObjects/testset_tissue/tst_spmat_XV_t1_82558.rds"))
+}
+
 spwin_t3 <- moleculaR::createSpatialWindow(pixelCoords = t3_spmat_pos$coordinates, plot = T)
 spwin_t4 <- moleculaR::createSpatialWindow(pixelCoords = t4_spmat_pos$coordinates, plot = T)
 
-fwhm_pos <- readRDS(file.path(AbsPath,"input/06_fwhm_object/fwhm_obj_pos.rds"))
+fwhm_pos <- readRDS(file.path(checkPointDir,"data/input/06_fwhm_object/fwhm_obj_pos.rds"))
 plot(fwhm_pos)
 
 
@@ -685,7 +1195,7 @@ for(i in seq_along(mzList)){
             tissue3_MPMObj <- moleculaR::probMap(sppMoi = SPP_t3_list_pos, bw = 2.5)
             # Store the probability map in the results list
             probImg_t3_pos[[i]] <-tissue3_MPMObj
-            hotspotMasks_t3[[i]] <- probImg_t3_pos[i]$hotspotMask
+            hotspotMasks_t3[[i]] <- probImg_t3_pos[[i]]$hotspotMask
       }
 
       
@@ -706,7 +1216,7 @@ for(i in seq_along(mzList)){
             # Store the probability map in the results list
             probImg_t4_pos[[i]] <-tissue4_MPMObj  
             
-            hotspotMasks_t4[[i]] <-probImg_t4_pos[i]$hotspotMask}      }
+            hotspotMasks_t4[[i]] <-probImg_t4_pos[[i]]$hotspotMask}      }
 
 
 
@@ -724,7 +1234,8 @@ SPP_MPM_objects <- list(SPP_t3 = SPP_t3_list_pos,
                         MPM_t4 = probImg_t4_pos
                         )
 
-saveRDS(object = SPP_MPM_objects, file = file.path(AbsPath, "output/SPPs_MPMs", "01_spp_mpm_objects.rds"))
+dir.create(file.path(checkPointDir, "output/SPPs_MPMs"), recursive = TRUE, showWarnings = FALSE)
+saveRDS(object = SPP_MPM_objects, file = file.path(checkPointDir, "output/SPPs_MPMs", "01_spp_mpm_objects.rds"))
 # readRDS(file = file.path("output/SPPs_MPMs", "01_spp_mpm_objects.rds"))
 
 
@@ -737,17 +1248,120 @@ saveRDS(object = SPP_MPM_objects, file = file.path(AbsPath, "output/SPPs_MPMs", 
 ## Create win for tissue subtypes like VT, Nec, and PreNec
 
 
+### create coords_list object
 
+this object will contain coordinates of all of the tissue samples withing the cohort. 
+
+Note: here, for this workflow i need t3 and t4
+
+```{r}
+
+create_coords_matrix <- function(patient_id, lbls_pos) {
+  # Subset x and y coordinates for the specified patient
+  x_coords <- lbls_pos$xCoord[lbls_pos$pos_refNames == patient_id]
+  y_coords <- lbls_pos$yCoord[lbls_pos$pos_refNames == patient_id]
+  # Create a matrix combining x and y coordinates:
+  coords_matrix <- matrix(data = c(x_coords, y_coords), ncol = 2, nrow = length(y_coords))
+  # Convert the matrix to a data frame
+  coords_df <- as.data.frame(coords_matrix)
+  return(coords_df)
+}
+# Get unique patient IDs; this method avoids confusion of t1, t10,t11 sucssession: 
+patient_ids <- unique(lbls_pos$pos_refNames)
+# remove patients t6: XIV_t1, and t21, t23
+# Create a list containing coordinates matrices for each patient
+coords_list <- lapply(patient_ids, create_coords_matrix, lbls_pos = lbls_pos)
+# Optionally, you can assign names to the list elements based on patient IDs
+names(coords_list) <- patient_ids
+# create a list containing spmat objects for all the 42 patients then name them accordingly:
+
+```
+
+
+
+```{r LblWins}
+# [01] create histopathology window objects for each patient Tissue sample:  
+
+# All label types for tissue 3 (XIII 83318):
+t3_VT_lbls     = lbls_pos$Vt_vs_all_lbls[lbls_pos$pos_refNames == "t3"]
+t3_Nec_lbls    = lbls_pos$Nec_vs_all_lbls[lbls_pos$pos_refNames == "t3"]
+t3_PreNec_lbls = lbls_pos$PreNec_vs_all_lbls[lbls_pos$pos_refNames == "t3"]
+
+# All label types for tissue 4 (XV 82558):
+t4_VT_lbls     = lbls_pos$Vt_vs_all_lbls[lbls_pos$pos_refNames == "t4"]
+t4_Nec_lbls    = lbls_pos$Nec_vs_all_lbls[lbls_pos$pos_refNames == "t4"]
+t4_PreNec_lbls = lbls_pos$PreNec_vs_all_lbls[lbls_pos$pos_refNames == "t4"]
+
+
+patients_t3_t4 <- c("t3","t4")
+
+
+# create master windows containng window objects for each patient tissue: 
+master_windows <- list()
+
+master_windows <- lapply(patients_t3_t4 , function(patient){
+      list(
+            VT_win = vector(),
+            # Vt_vasc_win = vector(),
+            Nec_win     = vector(),
+            PreNec_win  = vector()
+            )
+      })
+names(master_windows) <- patients_t3_t4
+
+
+# lbls_perDf <- lbls_pos
+t3_lbl_idx <- which(lbls_pos$pos_refNames == "t3")
+t4_lbl_idx <- which(lbls_pos$pos_refNames == "t4")
+
+
+master_windows$t3$VT_win <-  spatstat.geom::as.polygonal(spatstat.geom::owin(mask = coords_list$t3[lbls_pos$Vt_vs_all_lbls[t3_lbl_idx] == 0, ]))
+master_windows$t3$Nec_win <- spatstat.geom::as.polygonal(spatstat.geom::owin(mask = coords_list$t3[lbls_pos$Nec_vs_all_lbls[t3_lbl_idx] == 0, ]))
+# master_windows$t3$PreNec_win <- spatstat.geom::as.polygonal(spatstat.geom::owin(mask = coords_list$t3[lbls_pos$PreNec_vs_all_lbls[t3_lbl_idx] == 0, ]))
+
+master_windows$t4$VT_win <- spatstat.geom::as.polygonal(spatstat.geom::owin(mask = coords_list$t4[lbls_pos$Vt_vs_all_lbls[t4_lbl_idx] == 0, ]))
+master_windows$t4$Nec_win <- spatstat.geom::as.polygonal(spatstat.geom::owin(mask = coords_list$t4[lbls_pos$Nec_vs_all_lbls[t4_lbl_idx] == 0, ]))
+master_windows$t4$PreNec_win <- spatstat.geom::as.polygonal(spatstat.geom::owin(mask = coords_list$t4[lbls_pos$PreNec_vs_all_lbls[t4_lbl_idx] == 0, ]))
+
+# master_windows$t3_Background_spwin <- spwin_t3
+# master_windows$t4_Background_spwin <- spwin_t4
+# master_windows$info = c("[01.07.2025] This contains spatial window objects to compare to MPM hotspot windows of each m/z value in the SHAP lists!")
+
+# save master window objects: 
+if(!exists(file.path(AbsPath, "output/spatialWindow_objects"))){
+  dir.create(file.path(AbsPath, "output/spatialWindow_objects"))
+} else{print("This directory already exists: spatialWindow_objects")}
+
+saveRDS(master_windows, file = file.path(AbsPath, "output/spatialWindow_objects", "SPWIN_t3_t4.rds"))
+
+# [02] create MPM hotspot window objects for each patient Tissue sample:  
+mpm_htspt_win <- vector("list", length = length(patients_t3_t4))
+names(mpm_htspt_win) <- patients_t3_t4
+
+# Measure the total execution time
+mpmObjects <- SPP_MPM_objects[3:4] # the last two are the MPM objects for these two tissues. Adjust according to your cohort.  
+
+{start_time <- Sys.time()
+for(i in seq_along(patients_t3_t4)){
+      mpm_htspt_win[[i]] <- lapply(mpmObjects[[i]], function(y) y$hotspotpp$window)
+      }
+      }
+# Measure the total execution time
+end_time <- Sys.time()
+# Calculate the total execution time
+total_time <- end_time - start_time
+# Print the total execution time
+cat("Total execution time:", total_time, "\n")
+
+```
 
 ### Output quality checks: 
 
 ```{r plt_aMass}
 cat("Running a quality check for the first m/z value's hotspot maps: ")
-plot(spwin_t3, ylim = rev(range(spwin_t3$yrange)))
-plot(mpm_htspt_win$t3[[1]]  , ylim = rev(range(spwin_t3$yrange)), title(main = paste0("\n \n \n m/z: ", mzList[1], "\n")) ,add = T)
+plot(spwin_t3)
 library(moleculaR)
-moleculaR:::plot.molProbMap(mpmObjects$MPM_t3[[1]], what = "MPM", figLegend = F)
-
+moleculaR:::plot.molProbMap(probImg_t3_pos[[1]], what = "MPM", figLegend = FALSE)
 ```
 
 
@@ -757,10 +1371,11 @@ moleculaR:::plot.molProbMap(mpmObjects$MPM_t3[[1]], what = "MPM", figLegend = F)
 ### Calculate overlap: 
 step 1) create empty slots: 
 ```{r dsc_objects}
-# Initiate a list object to contain patient ids: 
-# Create an empty list to store dsc_objs
-dsc_objs <- vector(mode = "list", length = length(unique(patients_t3_t4)))
-names(dsc_objs) <- unique(patients_t3_t4)
+# Initiate a list object to contain patient ids:
+# Create an empty list to store dsc_objs - using t3 (training) and t4 (testing)
+tissues_list <- c("t3", "t4")
+dsc_objs <- vector(mode = "list", length = length(tissues_list))
+names(dsc_objs) <- tissues_list
 
 for(i in seq_along(dsc_objs)){
       dsc_objs[[i]]$dcs_with_VT      <- vector(mode = "list")
@@ -769,14 +1384,26 @@ for(i in seq_along(dsc_objs)){
       # dsc_objs[[i]]$dcs_with_PreNec  <- vector(mode = "list")
       }
 
+# Initialize mpm_htspt_win before DSC calculation
+if (length(hotspotMasks_t3) > 0 && !is.null(hotspotMasks_t3[[1]])) {
+  mpm_htspt_win <- list(t3 = hotspotMasks_t3)
+} else {
+  mpm_htspt_win <- list(t3 = list())
+  message("Warning: No hotspot masks found for t3")
+}
+
 
 ```
 
 Step 2) Calculate Raw DSC of desired ROI to all tissue ROIs / tissue. 
+
+
 here the selected ROI of the first iteration is VT, thus the selected mzList would be {number of_} masses specific to Viable Tumour to be checked for their overlap across all ROIs in each tissue. 
 The next step will then to carry out the process of weighing the dsc values, put them in a dataframe, then filter them out --> write to disk.
+
+
 ```{r Step2_DSC}
-# [01] Training tissue DSC pbjects: 
+# [01] Training tissue DSC Objects: 
 # loop through VT t3:
 
 for (i in seq_along(dsc_objs$t3)) {
@@ -855,12 +1482,22 @@ for (i in seq_along(dsc_objs$t3)) {
 
 # DSC DF of trainingset
 dsc_df <- data.frame(
-      mzList = mzList, 
-      dsc_mpm_VT  = unlist(dsc_objs$t3$dcs_with_VT), # dsc of mpm with VT of TrainingSet
-      dsc_mpm_Nec = unlist(dsc_objs$t3$dcs_with_Nec)#, # dsc of mpm with Nec of TrainingSet
-      # dsc_mpm_PreNec = as.factor(rep("", length(mzList)))        # this is a placeholder for other ROIs depending on the Tissue ROIs.
-      )
+  mzList = mzList,
+  dsc_mpm_VT  = NA_real_,
+  dsc_mpm_Nec = NA_real_
+)
+if (length(hotspotMasks_t3) > 0 && !is.null(hotspotMasks_t3[[1]])) {
+  if (length(unlist(dsc_objs$t3$dcs_with_VT)) == length(mzList)) {
+    dsc_df$dsc_mpm_VT  <- unlist(dsc_objs$t3$dcs_with_VT)
+    dsc_df$dsc_mpm_Nec <- unlist(dsc_objs$t3$dcs_with_Nec)
+  } else {
+    message("DSC calculation returned incomplete results")
+  }
+} else {
+  message("No hotspot masks found, DSC values set to NA")
+}
 
+gc(full = TRUE)
 
 ```
 
@@ -871,18 +1508,18 @@ binary HMCS calcualtor:
 # [Author] SHAD A. M.
 # [Method] HMCS alculator binary mode.
 
-HMCS_calculatorBinary <- function(DSC_df, focusROI = "VT", ...){
-      # equation
-      if(focusROI == "VT"){
-            hmcs_VT <- (DSC_df$dsc_mpm_VT)- (DSC_df$dsc_mpm_Nec )#+ DSC_df$dsc_PreNec
-            return(hmcs_VT)
-      } else if(focusROI == "Nec"){
-            hmcs_Nec <- (DSC_df$dsc_mpm_Nec)- (DSC_df$dsc_mpm_VT)# + DSC_df$dsc_PreNec
-            return(hmcs_Nec)
-      }
-
-
-}
+# HMCS_calculatorBinary <- function(DSC_df, focusROI = "VT", ...){
+#       # equation
+#       if(focusROI == "VT"){
+#             hmcs_VT <- (DSC_df$dsc_mpm_VT)- (DSC_df$dsc_mpm_Nec )#+ DSC_df$dsc_PreNec
+#             return(hmcs_VT)
+#       } else if(focusROI == "Nec"){
+#             hmcs_Nec <- (DSC_df$dsc_mpm_Nec)- (DSC_df$dsc_mpm_VT)# + DSC_df$dsc_PreNec
+#             return(hmcs_Nec)
+#       }
+# 
+# 
+# }
 
 ```
 
@@ -890,8 +1527,11 @@ HMCS_calculatorBinary <- function(DSC_df, focusROI = "VT", ...){
 
 ```{r SIFS_function}
 # since the training set tissue sample only has two tissue ROIs, load the HMCS calcualtor Binary mode, and run it: 
-dsc_df$HMCS_VT      <- HMCS_calculatorBinary(DSC_df = dsc_df, focusROI = "VT" )
-dsc_df$HMCS_Nec     <- HMCS_calculatorBinary(DSC_df = dsc_df, focusROI = "Nec") 
+dsc_df$HMCS_VT      <- SIFS::HMCS_calculatorBinary(DSC_df = dsc_df, focusROI = "VT" )
+
+dsc_df$HMCS_Nec     <- SIFS::HMCS_calculatorBinary(DSC_df = dsc_df, focusROI = "Nec")
+
+
 # data.table::fwrite(dsc_df, file = file.path("output/hmcs_outputs", "hmcs_binaryMode_VT_Nec.csv"))
 # HMCS_mzLists:
 hmcs_VT_mz  <- dsc_df[order(dsc_df$HMCS_VT,decreasing = TRUE),c(1,2, 4)]
@@ -920,17 +1560,22 @@ knitr::kable(hmcs_VT_mz, format = "html")
 ```{r}
 mzList_top10VT  <- hmcs_VT_mz$mzList[1:10]
 mzList_top10Nec <- hmcs_Nec_mz$mzList[1:10]
-# find correponding location of each list on the mzList to be plotted: 
 Loc_VT_inmzList  <- which(mzList %in% mzList_top10VT)
 Loc_Nec_inmzList <- which(mzList %in% mzList_top10Nec)
 
-for(i in Loc_VT_inmzList){
-      moleculaR:::plot.molProbMap(mpmObjects$MPM_t3[[i]], what = "MPM", figLegend = F)
-      moleculaR:::plot.molProbMap(mpmObjects$MPM_t4[[i]], what = "MPM", figLegend = F)
+for(idx in Loc_VT_inmzList){
+  if (!is.null(probImg_t3_pos[[idx]]) && !is.null(probImg_t3_pos[[idx]]$sppMoi)) {
+    moleculaR:::plot.molProbMap(probImg_t3_pos[[idx]], what = "MPM", figLegend = F)
+  }
+  if (!is.null(probImg_t4_pos[[idx]]) && !is.null(probImg_t4_pos[[idx]]$sppMoi)) {
+    moleculaR:::plot.molProbMap(probImg_t4_pos[[idx]], what = "MPM", figLegend = F)
+  }
 }
 
 # as can be observed, the top 10 tumor masses found in the training set by HMCS are all localized in tumor in the Training set 
 # Also, they are all transferable on the testing set tissue, eventhough the testing set is completely independent and was not seen by it at any stage of the workflow. 
+
+
 
 ```
 
@@ -941,16 +1586,16 @@ for(i in Loc_VT_inmzList){
 
 
 ```{r hmcs_Nec}
-for(i in Loc_Nec_inmzList){
-      if(mpmObjects$MPM_t3[[i]]$sppMoi$n != 0 ){
-            print(moleculaR:::plot.molProbMap(mpmObjects$MPM_t3[[i]], what = "MPM", figLegend = F))
+for(idx in Loc_Nec_inmzList){
+      if(!is.null(probImg_t3_pos[[idx]]) && !is.null(probImg_t3_pos[[idx]]$sppMoi) && probImg_t3_pos[[idx]]$sppMoi$n != 0 ){
+            print(moleculaR:::plot.molProbMap(probImg_t3_pos[[idx]], what = "MPM", figLegend = F))
             
       } else{print("This (n) is zero")}
       }
       
-for(i in Loc_Nec_inmzList){
-      if(mpmObjects$MPM_t4[[i]]$sppMoi$n != 0 ){
-            print(moleculaR:::plot.molProbMap(mpmObjects$MPM_t4[[i]], what = "MPM", figLegend = F))
+for(idx in Loc_Nec_inmzList){
+      if(!is.null(probImg_t4_pos[[idx]]) && !is.null(probImg_t4_pos[[idx]]$sppMoi) && probImg_t4_pos[[idx]]$sppMoi$n != 0 ){
+            print(moleculaR:::plot.molProbMap(probImg_t4_pos[[idx]], what = "MPM", figLegend = F))
             
       } else{print("This (n) is zero")}
       }      

@@ -20,6 +20,12 @@
 
 
 Zero_remover <- function(df, col_idx, ...) {
-      mat <- as.matrix(df[, ..col_idx])
-      df[rowSums(mat) != 0]
+      UseDataTable <- is.data.table(df)
+      if (!UseDataTable) {
+        mat <- as.matrix(df[, col_idx, drop = FALSE])
+        df[rowSums(mat) != 0, , drop = FALSE]
+      } else {
+        mat <- as.matrix(df[, ..col_idx])
+        df[rowSums(mat) != 0]
+      }
 }

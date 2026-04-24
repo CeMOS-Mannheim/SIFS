@@ -1,0 +1,13 @@
+vignettes/01_SIFS_workflow1.Rmd
+R/hmcs_calculator_binaryMode.R
+R/plotOptical2_onHE.R
+R/plotOptical3.R
+R/plotOptical4.R
+R/weighting_ShapVals.R
+R/zero_SHAP_remover.R
+man/HMCS_calculatorBinary.Rd
+man/plotOptical2.Rd
+man/plotOptical3.Rd
+man/plotOptical4.Rd
+man/SHAP_weighing.Rd
+man/Zero_remover.Rd
