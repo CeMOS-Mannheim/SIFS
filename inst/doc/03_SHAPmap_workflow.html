@@ -1,0 +1,852 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+
+<meta charset="utf-8" />
+<meta name="generator" content="pandoc" />
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+
+<meta name="author" content="Shad Arif Mohammed" />
+
+<meta name="date" content="2026-04-26" />
+
+<title>SHAPmap Visualization Workflow</title>
+
+<script>// Pandoc 2.9 adds attributes on both header and div. We remove the former (to
+// be compatible with the behavior of Pandoc < 2.8).
+document.addEventListener('DOMContentLoaded', function(e) {
+  var hs = document.querySelectorAll("div.section[class*='level'] > :first-child");
+  var i, h, a;
+  for (i = 0; i < hs.length; i++) {
+    h = hs[i];
+    if (!/^h[1-6]$/i.test(h.tagName)) continue;  // it should be a header h1-h6
+    a = h.attributes;
+    while (a.length > 0) h.removeAttribute(a[0].name);
+  }
+});
+</script>
+
+<style type="text/css">
+code{white-space: pre-wrap;}
+span.smallcaps{font-variant: small-caps;}
+span.underline{text-decoration: underline;}
+div.column{display: inline-block; vertical-align: top; width: 50%;}
+div.hanging-indent{margin-left: 1.5em; text-indent: -1.5em;}
+ul.task-list{list-style: none;}
+</style>
+
+
+
+<style type="text/css">
+code {
+white-space: pre;
+}
+.sourceCode {
+overflow: visible;
+}
+</style>
+<style type="text/css" data-origin="pandoc">
+html { -webkit-text-size-adjust: 100%; }
+pre > code.sourceCode { white-space: pre; position: relative; }
+pre > code.sourceCode > span { display: inline-block; line-height: 1.25; }
+pre > code.sourceCode > span:empty { height: 1.2em; }
+.sourceCode { overflow: visible; }
+code.sourceCode > span { color: inherit; text-decoration: inherit; }
+div.sourceCode { margin: 1em 0; }
+pre.sourceCode { margin: 0; }
+@media screen {
+div.sourceCode { overflow: auto; }
+}
+@media print {
+pre > code.sourceCode { white-space: pre-wrap; }
+pre > code.sourceCode > span { text-indent: -5em; padding-left: 5em; }
+}
+pre.numberSource code
+{ counter-reset: source-line 0; }
+pre.numberSource code > span
+{ position: relative; left: -4em; counter-increment: source-line; }
+pre.numberSource code > span > a:first-child::before
+{ content: counter(source-line);
+position: relative; left: -1em; text-align: right; vertical-align: baseline;
+border: none; display: inline-block;
+-webkit-touch-callout: none; -webkit-user-select: none;
+-khtml-user-select: none; -moz-user-select: none;
+-ms-user-select: none; user-select: none;
+padding: 0 4px; width: 4em;
+color: #aaaaaa;
+}
+pre.numberSource { margin-left: 3em; border-left: 1px solid #aaaaaa; padding-left: 4px; }
+div.sourceCode
+{ }
+@media screen {
+pre > code.sourceCode > span > a:first-child::before { text-decoration: underline; }
+}
+code span.al { color: #ff0000; font-weight: bold; } 
+code span.an { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.at { color: #7d9029; } 
+code span.bn { color: #40a070; } 
+code span.bu { color: #008000; } 
+code span.cf { color: #007020; font-weight: bold; } 
+code span.ch { color: #4070a0; } 
+code span.cn { color: #880000; } 
+code span.co { color: #60a0b0; font-style: italic; } 
+code span.cv { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.do { color: #ba2121; font-style: italic; } 
+code span.dt { color: #902000; } 
+code span.dv { color: #40a070; } 
+code span.er { color: #ff0000; font-weight: bold; } 
+code span.ex { } 
+code span.fl { color: #40a070; } 
+code span.fu { color: #06287e; } 
+code span.im { color: #008000; font-weight: bold; } 
+code span.in { color: #60a0b0; font-weight: bold; font-style: italic; } 
+code span.kw { color: #007020; font-weight: bold; } 
+code span.op { color: #666666; } 
+code span.ot { color: #007020; } 
+code span.pp { color: #bc7a00; } 
+code span.sc { color: #4070a0; } 
+code span.ss { color: #bb6688; } 
+code span.st { color: #4070a0; } 
+code span.va { color: #19177c; } 
+code span.vs { color: #4070a0; } 
+code span.wa { color: #60a0b0; font-weight: bold; font-style: italic; } 
+</style>
+<script>
+// apply pandoc div.sourceCode style to pre.sourceCode instead
+(function() {
+  var sheets = document.styleSheets;
+  for (var i = 0; i < sheets.length; i++) {
+    if (sheets[i].ownerNode.dataset["origin"] !== "pandoc") continue;
+    try { var rules = sheets[i].cssRules; } catch (e) { continue; }
+    var j = 0;
+    while (j < rules.length) {
+      var rule = rules[j];
+      // check if there is a div.sourceCode rule
+      if (rule.type !== rule.STYLE_RULE || rule.selectorText !== "div.sourceCode") {
+        j++;
+        continue;
+      }
+      var style = rule.style.cssText;
+      // check if color or background-color is set
+      if (rule.style.color === '' && rule.style.backgroundColor === '') {
+        j++;
+        continue;
+      }
+      // replace div.sourceCode by a pre.sourceCode rule
+      sheets[i].deleteRule(j);
+      sheets[i].insertRule('pre.sourceCode{' + style + '}', j);
+    }
+  }
+})();
+</script>
+
+
+
+
+<style type="text/css">body {
+background-color: #fff;
+margin: 1em auto;
+max-width: 700px;
+overflow: visible;
+padding-left: 2em;
+padding-right: 2em;
+font-family: "Open Sans", "Helvetica Neue", Helvetica, Arial, sans-serif;
+font-size: 14px;
+line-height: 1.35;
+}
+#TOC {
+clear: both;
+margin: 0 0 10px 10px;
+padding: 4px;
+width: 400px;
+border: 1px solid #CCCCCC;
+border-radius: 5px;
+background-color: #f6f6f6;
+font-size: 13px;
+line-height: 1.3;
+}
+#TOC .toctitle {
+font-weight: bold;
+font-size: 15px;
+margin-left: 5px;
+}
+#TOC ul {
+padding-left: 40px;
+margin-left: -1.5em;
+margin-top: 5px;
+margin-bottom: 5px;
+}
+#TOC ul ul {
+margin-left: -2em;
+}
+#TOC li {
+line-height: 16px;
+}
+table {
+margin: 1em auto;
+border-width: 1px;
+border-color: #DDDDDD;
+border-style: outset;
+border-collapse: collapse;
+}
+table th {
+border-width: 2px;
+padding: 5px;
+border-style: inset;
+}
+table td {
+border-width: 1px;
+border-style: inset;
+line-height: 18px;
+padding: 5px 5px;
+}
+table, table th, table td {
+border-left-style: none;
+border-right-style: none;
+}
+table thead, table tr.even {
+background-color: #f7f7f7;
+}
+p {
+margin: 0.5em 0;
+}
+blockquote {
+background-color: #f6f6f6;
+padding: 0.25em 0.75em;
+}
+hr {
+border-style: solid;
+border: none;
+border-top: 1px solid #777;
+margin: 28px 0;
+}
+dl {
+margin-left: 0;
+}
+dl dd {
+margin-bottom: 13px;
+margin-left: 13px;
+}
+dl dt {
+font-weight: bold;
+}
+ul {
+margin-top: 0;
+}
+ul li {
+list-style: circle outside;
+}
+ul ul {
+margin-bottom: 0;
+}
+pre, code {
+background-color: #f7f7f7;
+border-radius: 3px;
+color: #333;
+white-space: pre-wrap; 
+}
+pre {
+border-radius: 3px;
+margin: 5px 0px 10px 0px;
+padding: 10px;
+}
+pre:not([class]) {
+background-color: #f7f7f7;
+}
+code {
+font-family: Consolas, Monaco, 'Courier New', monospace;
+font-size: 85%;
+}
+p > code, li > code {
+padding: 2px 0px;
+}
+div.figure {
+text-align: center;
+}
+img {
+background-color: #FFFFFF;
+padding: 2px;
+border: 1px solid #DDDDDD;
+border-radius: 3px;
+border: 1px solid #CCCCCC;
+margin: 0 5px;
+}
+h1 {
+margin-top: 0;
+font-size: 35px;
+line-height: 40px;
+}
+h2 {
+border-bottom: 4px solid #f7f7f7;
+padding-top: 10px;
+padding-bottom: 2px;
+font-size: 145%;
+}
+h3 {
+border-bottom: 2px solid #f7f7f7;
+padding-top: 10px;
+font-size: 120%;
+}
+h4 {
+border-bottom: 1px solid #f7f7f7;
+margin-left: 8px;
+font-size: 105%;
+}
+h5, h6 {
+border-bottom: 1px solid #ccc;
+font-size: 105%;
+}
+a {
+color: #0033dd;
+text-decoration: none;
+}
+a:hover {
+color: #6666ff; }
+a:visited {
+color: #800080; }
+a:visited:hover {
+color: #BB00BB; }
+a[href^="http:"] {
+text-decoration: underline; }
+a[href^="https:"] {
+text-decoration: underline; }
+
+code > span.kw { color: #555; font-weight: bold; } 
+code > span.dt { color: #902000; } 
+code > span.dv { color: #40a070; } 
+code > span.bn { color: #d14; } 
+code > span.fl { color: #d14; } 
+code > span.ch { color: #d14; } 
+code > span.st { color: #d14; } 
+code > span.co { color: #888888; font-style: italic; } 
+code > span.ot { color: #007020; } 
+code > span.al { color: #ff0000; font-weight: bold; } 
+code > span.fu { color: #900; font-weight: bold; } 
+code > span.er { color: #a61717; background-color: #e3d2d2; } 
+</style>
+
+
+
+
+</head>
+
+<body>
+
+
+
+
+<h1 class="title toc-ignore">SHAPmap Visualization Workflow</h1>
+<h4 class="author">Shad Arif Mohammed</h4>
+<h4 class="date">2026-04-26</h4>
+
+
+
+<div id="introduction" class="section level1">
+<h1>Introduction</h1>
+<p>This vignette demonstrates the complete workflow for generating
+<strong>SHAP (SHapley Additive exPlanations) value spatial
+heatmaps</strong> from mass spectrometry imaging (MSI) data. The
+workflow trains an XGBoost binary classifier, computes SHAP values using
+the <code>treeshap</code> package, and visualizes the results spatially
+on the MSI raster.</p>
+<div id="prerequisites" class="section level2">
+<h2>Prerequisites</h2>
+<p>The following R packages are required:</p>
+<ul>
+<li><strong>treeshap</strong>: For computing SHAP values from tree-based
+models</li>
+<li><strong>xgboost</strong>: For training the gradient boosting
+classifier<br />
+</li>
+<li><strong>moleculaR</strong>: For MSI-specific functions (spatial
+window creation)</li>
+<li><strong>data.table</strong>: For efficient data manipulation</li>
+<li><strong>viridisLite</strong>: For color palettes</li>
+</ul>
+<div class="sourceCode" id="cb1"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb1-1"><a href="#cb1-1" tabindex="-1"></a><span class="co"># Load required packages</span></span>
+<span id="cb1-2"><a href="#cb1-2" tabindex="-1"></a><span class="fu">library</span>(treeshap)</span>
+<span id="cb1-3"><a href="#cb1-3" tabindex="-1"></a><span class="fu">library</span>(xgboost)</span>
+<span id="cb1-4"><a href="#cb1-4" tabindex="-1"></a><span class="fu">library</span>(moleculaR)</span>
+<span id="cb1-5"><a href="#cb1-5" tabindex="-1"></a><span class="fu">library</span>(data.table)</span>
+<span id="cb1-6"><a href="#cb1-6" tabindex="-1"></a><span class="fu">library</span>(viridisLite)</span></code></pre></div>
+<hr />
+</div>
+</div>
+<div id="step-1-load-input-data" class="section level1">
+<h1>Step 1: Load Input Data</h1>
+<div id="overview" class="section level2">
+<h2>Overview</h2>
+<p>We load the MSI training data from the
+<code>trainSet_spmat.rds</code> file, which contains: -
+<code>$spmat</code>: Sparse intensity matrix (pixels × m/z features) -
+<code>$coordinates</code>: Pixel coordinates (x, y positions) -
+<code>$mzAxis</code>: m/z values for each feature column</p>
+</div>
+<div id="data-structure" class="section level2">
+<h2>Data Structure</h2>
+<p>The data is stored as a sparse matrix in dgCMatrix format for memory
+efficiency. Each row represents a pixel, and each column represents an
+m/z feature.</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb2-1"><a href="#cb2-1" tabindex="-1"></a><span class="co"># Define paths</span></span>
+<span id="cb2-2"><a href="#cb2-2" tabindex="-1"></a>abs_path <span class="ot">&lt;-</span> <span class="st">&quot;D:/Projects/Rpackages/SIFS/&quot;</span></span>
+<span id="cb2-3"><a href="#cb2-3" tabindex="-1"></a>input_dir <span class="ot">&lt;-</span> <span class="fu">file.path</span>(abs_path, <span class="st">&quot;data/input&quot;</span>)</span>
+<span id="cb2-4"><a href="#cb2-4" tabindex="-1"></a>output_dir <span class="ot">&lt;-</span> <span class="fu">file.path</span>(abs_path, <span class="st">&quot;data/output/workflow2&quot;</span>)</span>
+<span id="cb2-5"><a href="#cb2-5" tabindex="-1"></a></span>
+<span id="cb2-6"><a href="#cb2-6" tabindex="-1"></a><span class="co"># Load the training dataset</span></span>
+<span id="cb2-7"><a href="#cb2-7" tabindex="-1"></a>train_spmat <span class="ot">&lt;-</span> <span class="fu">readRDS</span>(<span class="at">file =</span> <span class="fu">file.path</span>(input_dir, <span class="st">&quot;trainSet_spmat.rds&quot;</span>))</span>
+<span id="cb2-8"><a href="#cb2-8" tabindex="-1"></a></span>
+<span id="cb2-9"><a href="#cb2-9" tabindex="-1"></a><span class="co"># Inspect the structure</span></span>
+<span id="cb2-10"><a href="#cb2-10" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;=== trainSet_spmat Structure ===</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb2-11"><a href="#cb2-11" tabindex="-1"></a><span class="co">#&gt; === trainSet_spmat Structure ===</span></span>
+<span id="cb2-12"><a href="#cb2-12" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;spmat dimensions:&quot;</span>, <span class="fu">dim</span>(train_spmat<span class="sc">$</span>spmat), <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb2-13"><a href="#cb2-13" tabindex="-1"></a><span class="co">#&gt; spmat dimensions: 3660 13144</span></span>
+<span id="cb2-14"><a href="#cb2-14" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;coordinates: &quot;</span>, <span class="fu">nrow</span>(train_spmat<span class="sc">$</span>coordinates), <span class="st">&quot;pixels</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb2-15"><a href="#cb2-15" tabindex="-1"></a><span class="co">#&gt; coordinates:  3660 pixels</span></span>
+<span id="cb2-16"><a href="#cb2-16" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;mzAxis: &quot;</span>, <span class="fu">length</span>(train_spmat<span class="sc">$</span>mzAxis), <span class="st">&quot;m/z features</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb2-17"><a href="#cb2-17" tabindex="-1"></a><span class="co">#&gt; mzAxis:  13144 m/z features</span></span>
+<span id="cb2-18"><a href="#cb2-18" tabindex="-1"></a></span>
+<span id="cb2-19"><a href="#cb2-19" tabindex="-1"></a><span class="co"># Extract components for easier access</span></span>
+<span id="cb2-20"><a href="#cb2-20" tabindex="-1"></a>spmat <span class="ot">&lt;-</span> train_spmat<span class="sc">$</span>spmat</span>
+<span id="cb2-21"><a href="#cb2-21" tabindex="-1"></a>coords <span class="ot">&lt;-</span> train_spmat<span class="sc">$</span>coordinates</span>
+<span id="cb2-22"><a href="#cb2-22" tabindex="-1"></a>mz_axis <span class="ot">&lt;-</span> train_spmat<span class="sc">$</span>mzAxis</span>
+<span id="cb2-23"><a href="#cb2-23" tabindex="-1"></a></span>
+<span id="cb2-24"><a href="#cb2-24" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;</span><span class="sc">\n</span><span class="st">=== Coordinate Ranges ===</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb2-25"><a href="#cb2-25" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb2-26"><a href="#cb2-26" tabindex="-1"></a><span class="co">#&gt; === Coordinate Ranges ===</span></span>
+<span id="cb2-27"><a href="#cb2-27" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;X range:&quot;</span>, <span class="fu">min</span>(coords<span class="sc">$</span>x), <span class="st">&quot;-&quot;</span>, <span class="fu">max</span>(coords<span class="sc">$</span>x), <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb2-28"><a href="#cb2-28" tabindex="-1"></a><span class="co">#&gt; X range: 788 - 878</span></span>
+<span id="cb2-29"><a href="#cb2-29" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Y range:&quot;</span>, <span class="fu">min</span>(coords<span class="sc">$</span>y), <span class="st">&quot;-&quot;</span>, <span class="fu">max</span>(coords<span class="sc">$</span>y), <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb2-30"><a href="#cb2-30" tabindex="-1"></a><span class="co">#&gt; Y range: 138 - 189</span></span></code></pre></div>
+<p><strong>Key Points:</strong> - The coordinate system uses pixel
+indices (x: 788-878, y: 138-189) - Total of 3,660 pixels in the tissue
+sample - 13,144 m/z features detected</p>
+<hr />
+</div>
+</div>
+<div id="step-2-prepare-training-data" class="section level1">
+<h1>Step 2: Prepare Training Data</h1>
+<div id="overview-1" class="section level2">
+<h2>Overview</h2>
+<p>Convert the sparse matrix to dense format and prepare feature matrix
+(X) and labels (y) for model training.</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb3-1"><a href="#cb3-1" tabindex="-1"></a><span class="co"># Convert sparse matrix to dense matrix</span></span>
+<span id="cb3-2"><a href="#cb3-2" tabindex="-1"></a>X_train <span class="ot">&lt;-</span> <span class="fu">as.matrix</span>(spmat)</span>
+<span id="cb3-3"><a href="#cb3-3" tabindex="-1"></a></span>
+<span id="cb3-4"><a href="#cb3-4" tabindex="-1"></a><span class="co"># Set column names to m/z values (required for treeshap compatibility)</span></span>
+<span id="cb3-5"><a href="#cb3-5" tabindex="-1"></a><span class="fu">colnames</span>(X_train) <span class="ot">&lt;-</span> <span class="fu">as.character</span>(mz_axis)</span>
+<span id="cb3-6"><a href="#cb3-6" tabindex="-1"></a></span>
+<span id="cb3-7"><a href="#cb3-7" tabindex="-1"></a><span class="co"># Load labels (binary class: tumor vs normal)</span></span>
+<span id="cb3-8"><a href="#cb3-8" tabindex="-1"></a>labels <span class="ot">&lt;-</span> <span class="fu">read.csv</span>(<span class="at">file =</span> <span class="fu">file.path</span>(input_dir, <span class="st">&quot;t3_lbls.csv&quot;</span>))</span>
+<span id="cb3-9"><a href="#cb3-9" tabindex="-1"></a>y_train <span class="ot">&lt;-</span> labels<span class="sc">$</span>t3_labels</span>
+<span id="cb3-10"><a href="#cb3-10" tabindex="-1"></a></span>
+<span id="cb3-11"><a href="#cb3-11" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;=== Training Data ===</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb3-12"><a href="#cb3-12" tabindex="-1"></a><span class="co">#&gt; === Training Data ===</span></span>
+<span id="cb3-13"><a href="#cb3-13" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;X_train dimensions:&quot;</span>, <span class="fu">dim</span>(X_train), <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb3-14"><a href="#cb3-14" tabindex="-1"></a><span class="co">#&gt; X_train dimensions: 3660 13144</span></span>
+<span id="cb3-15"><a href="#cb3-15" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Labels:&quot;</span>, <span class="fu">length</span>(y_train), <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb3-16"><a href="#cb3-16" tabindex="-1"></a><span class="co">#&gt; Labels: 3660</span></span>
+<span id="cb3-17"><a href="#cb3-17" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Class distribution:</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb3-18"><a href="#cb3-18" tabindex="-1"></a><span class="co">#&gt; Class distribution:</span></span>
+<span id="cb3-19"><a href="#cb3-19" tabindex="-1"></a><span class="fu">print</span>(<span class="fu">table</span>(y_train))</span>
+<span id="cb3-20"><a href="#cb3-20" tabindex="-1"></a><span class="co">#&gt; y_train</span></span>
+<span id="cb3-21"><a href="#cb3-21" tabindex="-1"></a><span class="co">#&gt;    0    1 </span></span>
+<span id="cb3-22"><a href="#cb3-22" tabindex="-1"></a><span class="co">#&gt;  823 2837</span></span></code></pre></div>
+<p><strong>Important Note:</strong> We use the <strong>original m/z
+values</strong> from <code>mz_axis</code>, NOT the rounded column names.
+The m/z values directly from the data preserve full precision.</p>
+<hr />
+</div>
+</div>
+<div id="step-3-train-xgboost-classifier" class="section level1">
+<h1>Step 3: Train XGBoost Classifier</h1>
+<div id="overview-2" class="section level2">
+<h2>Overview</h2>
+<p>Train an XGBoost gradient boosting classifier for binary
+classification. We use simplified parameters for faster computation
+while maintaining reasonable accuracy.</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb4-1"><a href="#cb4-1" tabindex="-1"></a><span class="co"># XGBoost training parameters</span></span>
+<span id="cb4-2"><a href="#cb4-2" tabindex="-1"></a>params <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb4-3"><a href="#cb4-3" tabindex="-1"></a>  <span class="at">objective =</span> <span class="st">&quot;binary:logistic&quot;</span>,</span>
+<span id="cb4-4"><a href="#cb4-4" tabindex="-1"></a>  <span class="at">eval_metric =</span> <span class="st">&quot;auc&quot;</span>,</span>
+<span id="cb4-5"><a href="#cb4-5" tabindex="-1"></a>  <span class="at">max_depth =</span> <span class="dv">6</span>,</span>
+<span id="cb4-6"><a href="#cb4-6" tabindex="-1"></a>  <span class="at">eta =</span> <span class="fl">0.1</span>,</span>
+<span id="cb4-7"><a href="#cb4-7" tabindex="-1"></a>  <span class="at">nthread =</span> <span class="dv">2</span>,</span>
+<span id="cb4-8"><a href="#cb4-8" tabindex="-1"></a>  <span class="at">verbosity =</span> <span class="dv">0</span></span>
+<span id="cb4-9"><a href="#cb4-9" tabindex="-1"></a>)</span>
+<span id="cb4-10"><a href="#cb4-10" tabindex="-1"></a></span>
+<span id="cb4-11"><a href="#cb4-11" tabindex="-1"></a><span class="co"># Train the model</span></span>
+<span id="cb4-12"><a href="#cb4-12" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Training XGBoost model...</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb4-13"><a href="#cb4-13" tabindex="-1"></a><span class="co">#&gt; Training XGBoost model...</span></span>
+<span id="cb4-14"><a href="#cb4-14" tabindex="-1"></a>xgb_model <span class="ot">&lt;-</span> <span class="fu">xgboost</span>(</span>
+<span id="cb4-15"><a href="#cb4-15" tabindex="-1"></a>  <span class="at">data =</span> X_train,</span>
+<span id="cb4-16"><a href="#cb4-16" tabindex="-1"></a>  <span class="at">label =</span> y_train,</span>
+<span id="cb4-17"><a href="#cb4-17" tabindex="-1"></a>  <span class="at">params =</span> params,</span>
+<span id="cb4-18"><a href="#cb4-18" tabindex="-1"></a>  <span class="at">nrounds =</span> <span class="dv">100</span>,</span>
+<span id="cb4-19"><a href="#cb4-19" tabindex="-1"></a>  <span class="at">verbose =</span> <span class="cn">FALSE</span></span>
+<span id="cb4-20"><a href="#cb4-20" tabindex="-1"></a>)</span>
+<span id="cb4-21"><a href="#cb4-21" tabindex="-1"></a><span class="co">#&gt; Warning in throw_err_or_depr_msg(&quot;Parameter(s) have been removed from this</span></span>
+<span id="cb4-22"><a href="#cb4-22" tabindex="-1"></a><span class="co">#&gt; function: &quot;, : Parameter(s) have been removed from this function: params. This</span></span>
+<span id="cb4-23"><a href="#cb4-23" tabindex="-1"></a><span class="co">#&gt; warning will become an error in a future version.</span></span>
+<span id="cb4-24"><a href="#cb4-24" tabindex="-1"></a><span class="co">#&gt; Warning in throw_err_or_depr_msg(&quot;Passed unrecognized parameters: &quot;,</span></span>
+<span id="cb4-25"><a href="#cb4-25" tabindex="-1"></a><span class="co">#&gt; paste(head(names_unrecognized), : Passed unrecognized parameters: verbose. This</span></span>
+<span id="cb4-26"><a href="#cb4-26" tabindex="-1"></a><span class="co">#&gt; warning will become an error in a future version.</span></span>
+<span id="cb4-27"><a href="#cb4-27" tabindex="-1"></a><span class="co">#&gt; Warning in throw_err_or_depr_msg(&quot;Parameter &#39;&quot;, match_old, &quot;&#39; has been renamed</span></span>
+<span id="cb4-28"><a href="#cb4-28" tabindex="-1"></a><span class="co">#&gt; to &#39;&quot;, : Parameter &#39;data&#39; has been renamed to &#39;x&#39;. This warning will become an</span></span>
+<span id="cb4-29"><a href="#cb4-29" tabindex="-1"></a><span class="co">#&gt; error in a future version.</span></span>
+<span id="cb4-30"><a href="#cb4-30" tabindex="-1"></a><span class="co">#&gt; Warning in throw_err_or_depr_msg(&quot;Parameter &#39;&quot;, match_old, &quot;&#39; has been renamed</span></span>
+<span id="cb4-31"><a href="#cb4-31" tabindex="-1"></a><span class="co">#&gt; to &#39;&quot;, : Parameter &#39;label&#39; has been renamed to &#39;y&#39;. This warning will become an</span></span>
+<span id="cb4-32"><a href="#cb4-32" tabindex="-1"></a><span class="co">#&gt; error in a future version.</span></span>
+<span id="cb4-33"><a href="#cb4-33" tabindex="-1"></a></span>
+<span id="cb4-34"><a href="#cb4-34" tabindex="-1"></a><span class="co"># Check training accuracy</span></span>
+<span id="cb4-35"><a href="#cb4-35" tabindex="-1"></a>train_pred <span class="ot">&lt;-</span> <span class="fu">predict</span>(xgb_model, X_train)</span>
+<span id="cb4-36"><a href="#cb4-36" tabindex="-1"></a>Binarized_train_pred <span class="ot">&lt;-</span> <span class="fu">ifelse</span>(train_pred <span class="sc">&lt;</span> <span class="fl">0.5</span>, <span class="at">yes =</span> <span class="dv">0</span>, <span class="at">no =</span> <span class="dv">1</span>)</span>
+<span id="cb4-37"><a href="#cb4-37" tabindex="-1"></a>train_auc <span class="ot">&lt;-</span> pROC<span class="sc">::</span><span class="fu">auc</span>(Binarized_train_pred, y_train)</span>
+<span id="cb4-38"><a href="#cb4-38" tabindex="-1"></a><span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">&quot;Training AUC: %.4f</span><span class="sc">\n</span><span class="st">&quot;</span>, train_auc))</span>
+<span id="cb4-39"><a href="#cb4-39" tabindex="-1"></a><span class="co">#&gt; Training AUC: 1.0000</span></span></code></pre></div>
+<hr />
+</div>
+</div>
+<div id="step-4-compute-shap-values" class="section level1">
+<h1>Step 4: Compute SHAP Values</h1>
+<div id="overview-3" class="section level2">
+<h2>Overview</h2>
+<p>Use the <code>treeshap</code> package to compute SHAP values. This
+requires:</p>
+<ol style="list-style-type: decimal">
+<li><strong>Unify</strong> the model using
+<code>xgboost.unify()</code></li>
+<li>Compute SHAP values with <code>treeshap()</code></li>
+</ol>
+<p>The unified model format is required by treeshap to compute SHAP
+values efficiently. The SHAP values are stored in the
+<code>$shaps</code> component of the results.</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb5-1"><a href="#cb5-1" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Computing SHAP values...</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb5-2"><a href="#cb5-2" tabindex="-1"></a><span class="co">#&gt; Computing SHAP values...</span></span>
+<span id="cb5-3"><a href="#cb5-3" tabindex="-1"></a></span>
+<span id="cb5-4"><a href="#cb5-4" tabindex="-1"></a><span class="co"># Step 4a: Unify the XGBoost model</span></span>
+<span id="cb5-5"><a href="#cb5-5" tabindex="-1"></a><span class="co"># This converts the model to treeshap&#39;s required format</span></span>
+<span id="cb5-6"><a href="#cb5-6" tabindex="-1"></a>unified_model <span class="ot">&lt;-</span> <span class="fu">xgboost.unify</span>(xgb_model, X_train)</span>
+<span id="cb5-7"><a href="#cb5-7" tabindex="-1"></a></span>
+<span id="cb5-8"><a href="#cb5-8" tabindex="-1"></a><span class="co"># Step 4b: Compute SHAP values</span></span>
+<span id="cb5-9"><a href="#cb5-9" tabindex="-1"></a><span class="co"># verbose = FALSE suppresses progress output</span></span>
+<span id="cb5-10"><a href="#cb5-10" tabindex="-1"></a>shap_results <span class="ot">&lt;-</span> <span class="fu">treeshap</span>(unified_model, X_train, <span class="at">verbose =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb5-11"><a href="#cb5-11" tabindex="-1"></a></span>
+<span id="cb5-12"><a href="#cb5-12" tabindex="-1"></a><span class="co"># Extract SHAP values from the $shaps component</span></span>
+<span id="cb5-13"><a href="#cb5-13" tabindex="-1"></a>shap_values <span class="ot">&lt;-</span> shap_results<span class="sc">$</span>shaps</span>
+<span id="cb5-14"><a href="#cb5-14" tabindex="-1"></a></span>
+<span id="cb5-15"><a href="#cb5-15" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;SHAP values dimensions:&quot;</span>, <span class="fu">nrow</span>(shap_values), <span class="st">&quot;x&quot;</span>, <span class="fu">ncol</span>(shap_values), <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb5-16"><a href="#cb5-16" tabindex="-1"></a><span class="co">#&gt; SHAP values dimensions: 3660 x 13144</span></span>
+<span id="cb5-17"><a href="#cb5-17" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;SHAP values class:&quot;</span>, <span class="fu">class</span>(shap_values), <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb5-18"><a href="#cb5-18" tabindex="-1"></a><span class="co">#&gt; SHAP values class: data.frame</span></span></code></pre></div>
+<hr />
+</div>
+</div>
+<div id="step-5-calculate-global-shap-importance" class="section level1">
+<h1>Step 5: Calculate Global SHAP Importance</h1>
+<div id="overview-4" class="section level2">
+<h2>Overview</h2>
+<p>Compute the mean absolute SHAP value for each feature to determine
+global importance. Rank features by importance to identify the top
+contributors to classification.</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb6-1"><a href="#cb6-1" tabindex="-1"></a><span class="co"># Set feature names as m/z values</span></span>
+<span id="cb6-2"><a href="#cb6-2" tabindex="-1"></a><span class="fu">colnames</span>(shap_values) <span class="ot">&lt;-</span> <span class="fu">as.character</span>(mz_axis)</span>
+<span id="cb6-3"><a href="#cb6-3" tabindex="-1"></a></span>
+<span id="cb6-4"><a href="#cb6-4" tabindex="-1"></a><span class="co"># Calculate mean absolute SHAP for each feature</span></span>
+<span id="cb6-5"><a href="#cb6-5" tabindex="-1"></a>mean_abs_shap <span class="ot">&lt;-</span> <span class="fu">colMeans</span>(<span class="fu">abs</span>(shap_values))</span>
+<span id="cb6-6"><a href="#cb6-6" tabindex="-1"></a></span>
+<span id="cb6-7"><a href="#cb6-7" tabindex="-1"></a><span class="co"># Create importance dataframe</span></span>
+<span id="cb6-8"><a href="#cb6-8" tabindex="-1"></a>global_shap_df <span class="ot">&lt;-</span> <span class="fu">data.frame</span>(</span>
+<span id="cb6-9"><a href="#cb6-9" tabindex="-1"></a>  <span class="at">feature =</span> <span class="fu">names</span>(mean_abs_shap),</span>
+<span id="cb6-10"><a href="#cb6-10" tabindex="-1"></a>  <span class="at">mean_abs_shap =</span> <span class="fu">as.numeric</span>(mean_abs_shap)</span>
+<span id="cb6-11"><a href="#cb6-11" tabindex="-1"></a>)</span>
+<span id="cb6-12"><a href="#cb6-12" tabindex="-1"></a></span>
+<span id="cb6-13"><a href="#cb6-13" tabindex="-1"></a><span class="co"># Sort by importance (descending)</span></span>
+<span id="cb6-14"><a href="#cb6-14" tabindex="-1"></a>global_shap_df <span class="ot">&lt;-</span> global_shap_df[<span class="fu">order</span>(<span class="sc">-</span>global_shap_df<span class="sc">$</span>mean_abs_shap), ]</span>
+<span id="cb6-15"><a href="#cb6-15" tabindex="-1"></a></span>
+<span id="cb6-16"><a href="#cb6-16" tabindex="-1"></a><span class="co"># Get top 10 features</span></span>
+<span id="cb6-17"><a href="#cb6-17" tabindex="-1"></a>top10_mz <span class="ot">&lt;-</span> global_shap_df<span class="sc">$</span>feature[<span class="dv">1</span><span class="sc">:</span><span class="dv">10</span>]</span>
+<span id="cb6-18"><a href="#cb6-18" tabindex="-1"></a></span>
+<span id="cb6-19"><a href="#cb6-19" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;=== Top 10 m/z by Mean |SHAP| ===</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb6-20"><a href="#cb6-20" tabindex="-1"></a><span class="co">#&gt; === Top 10 m/z by Mean |SHAP| ===</span></span>
+<span id="cb6-21"><a href="#cb6-21" tabindex="-1"></a><span class="fu">print</span>(top10_mz)</span>
+<span id="cb6-22"><a href="#cb6-22" tabindex="-1"></a><span class="co">#&gt;  [1] &quot;697.526343962531&quot; &quot;742.571609489194&quot; &quot;884.608417285124&quot; &quot;878.698499547531&quot;</span></span>
+<span id="cb6-23"><a href="#cb6-23" tabindex="-1"></a><span class="co">#&gt;  [5] &quot;586.449691384677&quot; &quot;675.544312217614&quot; &quot;587.45271611049&quot;  &quot;833.647917593093&quot;</span></span>
+<span id="cb6-24"><a href="#cb6-24" tabindex="-1"></a><span class="co">#&gt;  [9] &quot;457.217091093224&quot; &quot;426.356911651628&quot;</span></span>
+<span id="cb6-25"><a href="#cb6-25" tabindex="-1"></a></span>
+<span id="cb6-26"><a href="#cb6-26" tabindex="-1"></a><span class="co"># Save to CSV</span></span>
+<span id="cb6-27"><a href="#cb6-27" tabindex="-1"></a><span class="fu">fwrite</span>(global_shap_df, <span class="at">file =</span> <span class="fu">file.path</span>(output_dir, <span class="st">&quot;global_shap_importance.csv&quot;</span>))</span></code></pre></div>
+<hr />
+</div>
+</div>
+<div id="step-6-create-local-shap-contributions" class="section level1">
+<h1>Step 6: Create Local SHAP Contributions</h1>
+<div id="overview-5" class="section level2">
+<h2>Overview</h2>
+<p>For each pixel, extract the SHAP contribution values for the top 10
+features. This creates the local SHAP matrix used for spatial
+visualization.</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a><span class="co"># Select top 10 features</span></span>
+<span id="cb7-2"><a href="#cb7-2" tabindex="-1"></a>local_shap_df <span class="ot">&lt;-</span> <span class="fu">as.data.frame</span>(shap_values[, top10_mz])</span>
+<span id="cb7-3"><a href="#cb7-3" tabindex="-1"></a></span>
+<span id="cb7-4"><a href="#cb7-4" tabindex="-1"></a><span class="co"># Add proper column names</span></span>
+<span id="cb7-5"><a href="#cb7-5" tabindex="-1"></a><span class="fu">colnames</span>(local_shap_df) <span class="ot">&lt;-</span> top10_mz</span>
+<span id="cb7-6"><a href="#cb7-6" tabindex="-1"></a></span>
+<span id="cb7-7"><a href="#cb7-7" tabindex="-1"></a><span class="co"># Save to CSV</span></span>
+<span id="cb7-8"><a href="#cb7-8" tabindex="-1"></a><span class="fu">fwrite</span>(local_shap_df, <span class="at">file =</span> <span class="fu">file.path</span>(output_dir, <span class="st">&quot;local_shap_contributions.csv&quot;</span>))</span>
+<span id="cb7-9"><a href="#cb7-9" tabindex="-1"></a></span>
+<span id="cb7-10"><a href="#cb7-10" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Local SHAP dimensions:&quot;</span>, <span class="fu">dim</span>(local_shap_df), <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb7-11"><a href="#cb7-11" tabindex="-1"></a><span class="co">#&gt; Local SHAP dimensions: 3660 10</span></span>
+<span id="cb7-12"><a href="#cb7-12" tabindex="-1"></a><span class="fu">cat</span>(<span class="st">&quot;Saved to:&quot;</span>, <span class="fu">file.path</span>(output_dir, <span class="st">&quot;local_shap_contributions.csv&quot;</span>), <span class="st">&quot;</span><span class="sc">\n</span><span class="st">&quot;</span>)</span>
+<span id="cb7-13"><a href="#cb7-13" tabindex="-1"></a><span class="co">#&gt; Saved to: D:/Projects/Rpackages/SIFS//data/output/workflow2/local_shap_contributions.csv</span></span></code></pre></div>
+<hr />
+</div>
+</div>
+<div id="step-7-generate-spatial-shap-heatmaps" class="section level1">
+<h1>Step 7: Generate Spatial SHAP Heatmaps</h1>
+<div id="overview-6" class="section level2">
+<h2>Overview</h2>
+<p>Create spatial heatmap visualizations (SHAPmaps) for each of the top
+10 m/z features. This workflow:</p>
+<ol style="list-style-type: decimal">
+<li>Creates a matrix matching the pixel coordinate system</li>
+<li>Maps SHAP values to spatial positions</li>
+<li>Applies a diverging color palette</li>
+<li>Overlays the tissue boundary</li>
+</ol>
+</div>
+<div id="understanding-the-coordinate-system" class="section level2">
+<h2>Understanding the Coordinate System</h2>
+<p>In R’s <code>image()</code> function: - <strong>Matrix rows</strong>
+correspond to <strong>y-axis</strong> (vertical direction) -
+<strong>Matrix columns</strong> correspond to <strong>x-axis</strong>
+(horizontal direction) - <code>z[row, col]</code> →
+<code>image(x, y, z)</code> where <code>length(x) = ncol(z)</code> and
+<code>length(y) = nrow(z)</code></p>
+</div>
+<div id="matrix-construction" class="section level2">
+<h2>Matrix Construction</h2>
+<p>The matrix is constructed such that: - Rows correspond to
+y-coordinates (52 unique values: 138-189) - Columns correspond to
+x-coordinates (91 unique values: 788-878)</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb8-1"><a href="#cb8-1" tabindex="-1"></a><span class="co"># Create output directory</span></span>
+<span id="cb8-2"><a href="#cb8-2" tabindex="-1"></a>shapmap_dir <span class="ot">&lt;-</span> <span class="fu">file.path</span>(output_dir, <span class="st">&quot;SHAPmaps&quot;</span>)</span>
+<span id="cb8-3"><a href="#cb8-3" tabindex="-1"></a><span class="fu">dir.create</span>(shapmap_dir, <span class="at">recursive =</span> <span class="cn">TRUE</span>, <span class="at">showWarnings =</span> <span class="cn">FALSE</span>)</span>
+<span id="cb8-4"><a href="#cb8-4" tabindex="-1"></a></span>
+<span id="cb8-5"><a href="#cb8-5" tabindex="-1"></a><span class="co"># Get coordinate ranges</span></span>
+<span id="cb8-6"><a href="#cb8-6" tabindex="-1"></a>min_x <span class="ot">&lt;-</span> <span class="fu">min</span>(coords<span class="sc">$</span>x)</span>
+<span id="cb8-7"><a href="#cb8-7" tabindex="-1"></a>min_y <span class="ot">&lt;-</span> <span class="fu">min</span>(coords<span class="sc">$</span>y)</span>
+<span id="cb8-8"><a href="#cb8-8" tabindex="-1"></a>max_x <span class="ot">&lt;-</span> <span class="fu">max</span>(coords<span class="sc">$</span>x)</span>
+<span id="cb8-9"><a href="#cb8-9" tabindex="-1"></a>max_y <span class="ot">&lt;-</span> <span class="fu">max</span>(coords<span class="sc">$</span>y)</span>
+<span id="cb8-10"><a href="#cb8-10" tabindex="-1"></a></span>
+<span id="cb8-11"><a href="#cb8-11" tabindex="-1"></a>nx <span class="ot">&lt;-</span> <span class="fu">as.integer</span>(max_x <span class="sc">-</span> min_x <span class="sc">+</span> <span class="dv">1</span>)  <span class="co"># 91</span></span>
+<span id="cb8-12"><a href="#cb8-12" tabindex="-1"></a>ny <span class="ot">&lt;-</span> <span class="fu">as.integer</span>(max_y <span class="sc">-</span> min_y <span class="sc">+</span> <span class="dv">1</span>)  <span class="co"># 52</span></span>
+<span id="cb8-13"><a href="#cb8-13" tabindex="-1"></a></span>
+<span id="cb8-14"><a href="#cb8-14" tabindex="-1"></a><span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">&quot;Raster dimensions: nx=%d, ny=%d</span><span class="sc">\n</span><span class="st">&quot;</span>, nx, ny))</span>
+<span id="cb8-15"><a href="#cb8-15" tabindex="-1"></a><span class="co">#&gt; Raster dimensions: nx=91, ny=52</span></span>
+<span id="cb8-16"><a href="#cb8-16" tabindex="-1"></a></span>
+<span id="cb8-17"><a href="#cb8-17" tabindex="-1"></a><span class="co"># Create spatial window for boundary</span></span>
+<span id="cb8-18"><a href="#cb8-18" tabindex="-1"></a>spwin <span class="ot">&lt;-</span> <span class="fu">createSpatialWindow</span>(<span class="at">pixelCoords =</span> coords)</span></code></pre></div>
+<p><img role="img" src="data:image/png;base64,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" /><!-- --></p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a>bdry <span class="ot">&lt;-</span> spwin<span class="sc">$</span>bdry[[<span class="dv">1</span>]]</span>
+<span id="cb9-2"><a href="#cb9-2" tabindex="-1"></a></span>
+<span id="cb9-3"><a href="#cb9-3" tabindex="-1"></a><span class="co"># Custom color palette: blue -&gt; magenta -&gt; red</span></span>
+<span id="cb9-4"><a href="#cb9-4" tabindex="-1"></a>pastelPalette <span class="ot">&lt;-</span> <span class="fu">colorRampPalette</span>(<span class="fu">c</span>(<span class="st">&quot;#018bfb&quot;</span>, <span class="st">&quot;#027af4&quot;</span>, <span class="st">&quot;#ae12a5&quot;</span>, <span class="st">&quot;#cc0095&quot;</span>, <span class="st">&quot;#ff024f&quot;</span>))</span>
+<span id="cb9-5"><a href="#cb9-5" tabindex="-1"></a></span>
+<span id="cb9-6"><a href="#cb9-6" tabindex="-1"></a><span class="co"># Colorbar helper function</span></span>
+<span id="cb9-7"><a href="#cb9-7" tabindex="-1"></a>add_colorbar <span class="ot">&lt;-</span> <span class="cf">function</span>(col, breaks_vals, title) {</span>
+<span id="cb9-8"><a href="#cb9-8" tabindex="-1"></a>  usr <span class="ot">&lt;-</span> <span class="fu">par</span>(<span class="st">&quot;usr&quot;</span>)</span>
+<span id="cb9-9"><a href="#cb9-9" tabindex="-1"></a>  xpad <span class="ot">&lt;-</span> (usr[<span class="dv">2</span>] <span class="sc">-</span> usr[<span class="dv">1</span>]) <span class="sc">*</span> <span class="fl">0.02</span></span>
+<span id="cb9-10"><a href="#cb9-10" tabindex="-1"></a>  xloc <span class="ot">&lt;-</span> usr[<span class="dv">2</span>] <span class="sc">+</span> xpad</span>
+<span id="cb9-11"><a href="#cb9-11" tabindex="-1"></a>  yloc <span class="ot">&lt;-</span> <span class="fu">seq</span>(usr[<span class="dv">3</span>], usr[<span class="dv">4</span>], <span class="at">length.out =</span> <span class="fu">length</span>(col) <span class="sc">+</span> <span class="dv">1</span>)</span>
+<span id="cb9-12"><a href="#cb9-12" tabindex="-1"></a>  <span class="fu">rect</span>(<span class="fu">rep</span>(xloc, <span class="fu">length</span>(col)), yloc[<span class="sc">-</span><span class="fu">length</span>(yloc)],</span>
+<span id="cb9-13"><a href="#cb9-13" tabindex="-1"></a>       <span class="fu">rep</span>(xloc <span class="sc">+</span> xpad <span class="sc">*</span> <span class="dv">2</span>, <span class="fu">length</span>(col)), yloc[<span class="sc">-</span><span class="dv">1</span>],</span>
+<span id="cb9-14"><a href="#cb9-14" tabindex="-1"></a>       <span class="at">col =</span> col, <span class="at">border =</span> <span class="cn">NA</span>)</span>
+<span id="cb9-15"><a href="#cb9-15" tabindex="-1"></a>  <span class="fu">axis</span>(<span class="at">side =</span> <span class="dv">4</span>, <span class="at">at =</span> yloc, <span class="at">labels =</span> breaks_vals, <span class="at">las =</span> <span class="dv">1</span>, <span class="at">cex.axis =</span> <span class="fl">0.7</span>)</span>
+<span id="cb9-16"><a href="#cb9-16" tabindex="-1"></a>  <span class="fu">mtext</span>(<span class="at">side =</span> <span class="dv">4</span>, title, <span class="at">at =</span> <span class="fu">mean</span>(yloc), <span class="at">line =</span> <span class="fl">2.5</span>, <span class="at">las =</span> <span class="dv">0</span>, <span class="at">cex =</span> <span class="fl">0.8</span>)</span>
+<span id="cb9-17"><a href="#cb9-17" tabindex="-1"></a>}</span>
+<span id="cb9-18"><a href="#cb9-18" tabindex="-1"></a></span>
+<span id="cb9-19"><a href="#cb9-19" tabindex="-1"></a><span class="co"># Generate heatmaps for top 10 features</span></span>
+<span id="cb9-20"><a href="#cb9-20" tabindex="-1"></a><span class="cf">for</span> (i <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span><span class="dv">10</span>) {</span>
+<span id="cb9-21"><a href="#cb9-21" tabindex="-1"></a>  mz_val <span class="ot">&lt;-</span> top10_mz[i]</span>
+<span id="cb9-22"><a href="#cb9-22" tabindex="-1"></a>  </span>
+<span id="cb9-23"><a href="#cb9-23" tabindex="-1"></a>  <span class="co"># Get SHAP values for this feature</span></span>
+<span id="cb9-24"><a href="#cb9-24" tabindex="-1"></a>  shap_vals <span class="ot">&lt;-</span> local_shap_df[[<span class="fu">as.character</span>(mz_val)]]</span>
+<span id="cb9-25"><a href="#cb9-25" tabindex="-1"></a>  </span>
+<span id="cb9-26"><a href="#cb9-26" tabindex="-1"></a>  <span class="co"># Calculate quantile bounds for color scaling</span></span>
+<span id="cb9-27"><a href="#cb9-27" tabindex="-1"></a>  q05 <span class="ot">&lt;-</span> <span class="fu">quantile</span>(shap_vals, <span class="fl">0.05</span>)</span>
+<span id="cb9-28"><a href="#cb9-28" tabindex="-1"></a>  q95 <span class="ot">&lt;-</span> <span class="fu">quantile</span>(shap_vals, <span class="fl">0.95</span>)</span>
+<span id="cb9-29"><a href="#cb9-29" tabindex="-1"></a>  shap_range <span class="ot">&lt;-</span> <span class="fu">max</span>(<span class="fu">abs</span>(q05), <span class="fu">abs</span>(q95))</span>
+<span id="cb9-30"><a href="#cb9-30" tabindex="-1"></a>  </span>
+<span id="cb9-31"><a href="#cb9-31" tabindex="-1"></a>  <span class="co"># Create matrix: rows = x (91), columns = y (52) to match image() expectations</span></span>
+<span id="cb9-32"><a href="#cb9-32" tabindex="-1"></a>  <span class="co"># image() expects: nrow(z) = length(y), ncol(z) = length(x)</span></span>
+<span id="cb9-33"><a href="#cb9-33" tabindex="-1"></a>  mat <span class="ot">&lt;-</span> <span class="fu">matrix</span>(<span class="cn">NA</span>, <span class="at">nrow =</span> nx, <span class="at">ncol =</span> ny)</span>
+<span id="cb9-34"><a href="#cb9-34" tabindex="-1"></a>  </span>
+<span id="cb9-35"><a href="#cb9-35" tabindex="-1"></a>  <span class="cf">for</span> (j <span class="cf">in</span> <span class="dv">1</span><span class="sc">:</span><span class="fu">nrow</span>(coords)) {</span>
+<span id="cb9-36"><a href="#cb9-36" tabindex="-1"></a>    xi <span class="ot">&lt;-</span> coords<span class="sc">$</span>x[j] <span class="sc">-</span> min_x <span class="sc">+</span> <span class="dv">1</span></span>
+<span id="cb9-37"><a href="#cb9-37" tabindex="-1"></a>    yi <span class="ot">&lt;-</span> coords<span class="sc">$</span>y[j] <span class="sc">-</span> min_y <span class="sc">+</span> <span class="dv">1</span></span>
+<span id="cb9-38"><a href="#cb9-38" tabindex="-1"></a>    <span class="cf">if</span> (xi <span class="sc">&gt;=</span> <span class="dv">1</span> <span class="sc">&amp;&amp;</span> xi <span class="sc">&lt;=</span> nx <span class="sc">&amp;&amp;</span> yi <span class="sc">&gt;=</span> <span class="dv">1</span> <span class="sc">&amp;&amp;</span> yi <span class="sc">&lt;=</span> ny) {</span>
+<span id="cb9-39"><a href="#cb9-39" tabindex="-1"></a>      mat[xi, yi] <span class="ot">&lt;-</span> shap_vals[j]</span>
+<span id="cb9-40"><a href="#cb9-40" tabindex="-1"></a>    }</span>
+<span id="cb9-41"><a href="#cb9-41" tabindex="-1"></a>  }</span>
+<span id="cb9-42"><a href="#cb9-42" tabindex="-1"></a>  </span>
+<span id="cb9-43"><a href="#cb9-43" tabindex="-1"></a>  <span class="co"># Define output file</span></span>
+<span id="cb9-44"><a href="#cb9-44" tabindex="-1"></a>  png_file <span class="ot">&lt;-</span> <span class="fu">file.path</span>(shapmap_dir, <span class="fu">sprintf</span>(<span class="st">&quot;SHAPmap_%02d_mz_%.3f.svg&quot;</span>, i, <span class="fu">as.numeric</span>(mz_val)))</span>
+<span id="cb9-45"><a href="#cb9-45" tabindex="-1"></a>  </span>
+<span id="cb9-46"><a href="#cb9-46" tabindex="-1"></a>  <span class="co"># Create plot</span></span>
+<span id="cb9-47"><a href="#cb9-47" tabindex="-1"></a>  <span class="fu">svg</span>(png_file, <span class="at">width =</span> <span class="dv">12</span>, <span class="at">height =</span> <span class="dv">10</span>)</span>
+<span id="cb9-48"><a href="#cb9-48" tabindex="-1"></a>  <span class="fu">par</span>(<span class="at">mar =</span> <span class="fu">c</span>(<span class="dv">4</span>, <span class="dv">4</span>, <span class="dv">3</span>, <span class="dv">6</span>), <span class="at">oma =</span> <span class="fu">c</span>(<span class="dv">0</span>, <span class="dv">0</span>, <span class="dv">2</span>, <span class="dv">0</span>))</span>
+<span id="cb9-49"><a href="#cb9-49" tabindex="-1"></a>  </span>
+<span id="cb9-50"><a href="#cb9-50" tabindex="-1"></a>  <span class="co"># Color settings</span></span>
+<span id="cb9-51"><a href="#cb9-51" tabindex="-1"></a>  ncol <span class="ot">&lt;-</span> <span class="dv">100</span></span>
+<span id="cb9-52"><a href="#cb9-52" tabindex="-1"></a>  cols <span class="ot">&lt;-</span> <span class="fu">pastelPalette</span>(ncol)</span>
+<span id="cb9-53"><a href="#cb9-53" tabindex="-1"></a>  breaks_vals <span class="ot">&lt;-</span> <span class="fu">seq</span>(<span class="sc">-</span>shap_range, shap_range, <span class="at">length.out =</span> ncol <span class="sc">+</span> <span class="dv">1</span>)</span>
+<span id="cb9-54"><a href="#cb9-54" tabindex="-1"></a>  </span>
+<span id="cb9-55"><a href="#cb9-55" tabindex="-1"></a>  <span class="co"># Axis vectors</span></span>
+<span id="cb9-56"><a href="#cb9-56" tabindex="-1"></a>  x_axis <span class="ot">&lt;-</span> <span class="fu">seq</span>(min_x, max_x, <span class="at">length.out =</span> nx)</span>
+<span id="cb9-57"><a href="#cb9-57" tabindex="-1"></a>  y_axis <span class="ot">&lt;-</span> <span class="fu">seq</span>(min_y, max_y, <span class="at">length.out =</span> ny)</span>
+<span id="cb9-58"><a href="#cb9-58" tabindex="-1"></a>  </span>
+<span id="cb9-59"><a href="#cb9-59" tabindex="-1"></a>  <span class="co"># Create heatmap</span></span>
+<span id="cb9-60"><a href="#cb9-60" tabindex="-1"></a>  <span class="fu">image</span>(<span class="at">x =</span> x_axis, <span class="at">y =</span> y_axis, <span class="at">z =</span> mat, <span class="at">col =</span> cols,</span>
+<span id="cb9-61"><a href="#cb9-61" tabindex="-1"></a>        <span class="at">breaks =</span> breaks_vals,</span>
+<span id="cb9-62"><a href="#cb9-62" tabindex="-1"></a>        <span class="at">xlab =</span> <span class="st">&quot;X (pixels)&quot;</span>, <span class="at">ylab =</span> <span class="st">&quot;Y (pixels)&quot;</span>,</span>
+<span id="cb9-63"><a href="#cb9-63" tabindex="-1"></a>        <span class="at">main =</span> <span class="st">&quot;&quot;</span>, <span class="at">useRaster =</span> <span class="cn">TRUE</span>)</span>
+<span id="cb9-64"><a href="#cb9-64" tabindex="-1"></a>  </span>
+<span id="cb9-65"><a href="#cb9-65" tabindex="-1"></a>  <span class="co"># Add tissue boundary</span></span>
+<span id="cb9-66"><a href="#cb9-66" tabindex="-1"></a>  <span class="fu">lines</span>(bdry<span class="sc">$</span>x, bdry<span class="sc">$</span>y, <span class="at">col =</span> <span class="st">&quot;black&quot;</span>, <span class="at">lwd =</span> <span class="fl">2.5</span>)</span>
+<span id="cb9-67"><a href="#cb9-67" tabindex="-1"></a>  </span>
+<span id="cb9-68"><a href="#cb9-68" tabindex="-1"></a><span class="co"># Add title</span></span>
+<span id="cb9-69"><a href="#cb9-69" tabindex="-1"></a><span class="fu">mtext</span>(<span class="fu">sprintf</span>(<span class="st">&quot;m/z = %.3f (Rank #%d)&quot;</span>, <span class="fu">as.numeric</span>(mz_val), i), <span class="at">side =</span> <span class="dv">3</span>, <span class="at">outer =</span> <span class="cn">TRUE</span>,</span>
+<span id="cb9-70"><a href="#cb9-70" tabindex="-1"></a>        <span class="at">cex =</span> <span class="fl">1.5</span>, <span class="at">font =</span> <span class="dv">2</span>, <span class="at">line =</span> <span class="dv">0</span>)</span>
+<span id="cb9-71"><a href="#cb9-71" tabindex="-1"></a>  </span>
+<span id="cb9-72"><a href="#cb9-72" tabindex="-1"></a>  <span class="co"># Add colorbar</span></span>
+<span id="cb9-73"><a href="#cb9-73" tabindex="-1"></a>  <span class="fu">add_colorbar</span>(<span class="at">col =</span> cols, <span class="at">breaks_vals =</span> <span class="fu">round</span>(breaks_vals, <span class="dv">2</span>), <span class="at">title =</span> <span class="st">&quot;SHAP&quot;</span>)</span>
+<span id="cb9-74"><a href="#cb9-74" tabindex="-1"></a>  </span>
+<span id="cb9-75"><a href="#cb9-75" tabindex="-1"></a>  <span class="fu">dev.off</span>()</span>
+<span id="cb9-76"><a href="#cb9-76" tabindex="-1"></a>  </span>
+<span id="cb9-77"><a href="#cb9-77" tabindex="-1"></a>  <span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">&quot;Generated: %s</span><span class="sc">\n</span><span class="st">&quot;</span>, <span class="fu">basename</span>(png_file)))</span>
+<span id="cb9-78"><a href="#cb9-78" tabindex="-1"></a>}</span>
+<span id="cb9-79"><a href="#cb9-79" tabindex="-1"></a><span class="co">#&gt; Generated: SHAPmap_01_mz_697.526.svg</span></span>
+<span id="cb9-80"><a href="#cb9-80" tabindex="-1"></a><span class="co">#&gt; Generated: SHAPmap_02_mz_742.572.svg</span></span>
+<span id="cb9-81"><a href="#cb9-81" tabindex="-1"></a><span class="co">#&gt; Generated: SHAPmap_03_mz_884.608.svg</span></span>
+<span id="cb9-82"><a href="#cb9-82" tabindex="-1"></a><span class="co">#&gt; Generated: SHAPmap_04_mz_878.698.svg</span></span>
+<span id="cb9-83"><a href="#cb9-83" tabindex="-1"></a><span class="co">#&gt; Generated: SHAPmap_05_mz_586.450.svg</span></span>
+<span id="cb9-84"><a href="#cb9-84" tabindex="-1"></a><span class="co">#&gt; Generated: SHAPmap_06_mz_675.544.svg</span></span>
+<span id="cb9-85"><a href="#cb9-85" tabindex="-1"></a><span class="co">#&gt; Generated: SHAPmap_07_mz_587.453.svg</span></span>
+<span id="cb9-86"><a href="#cb9-86" tabindex="-1"></a><span class="co">#&gt; Generated: SHAPmap_08_mz_833.648.svg</span></span>
+<span id="cb9-87"><a href="#cb9-87" tabindex="-1"></a><span class="co">#&gt; Generated: SHAPmap_09_mz_457.217.svg</span></span>
+<span id="cb9-88"><a href="#cb9-88" tabindex="-1"></a><span class="co">#&gt; Generated: SHAPmap_10_mz_426.357.svg</span></span>
+<span id="cb9-89"><a href="#cb9-89" tabindex="-1"></a></span>
+<span id="cb9-90"><a href="#cb9-90" tabindex="-1"></a><span class="fu">cat</span>(<span class="fu">sprintf</span>(<span class="st">&quot;</span><span class="sc">\n</span><span class="st">=== Complete! %d SHAPmaps saved to %s ===</span><span class="sc">\n</span><span class="st">&quot;</span>, <span class="dv">10</span>, shapmap_dir))</span>
+<span id="cb9-91"><a href="#cb9-91" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb9-92"><a href="#cb9-92" tabindex="-1"></a><span class="co">#&gt; === Complete! 10 SHAPmaps saved to D:/Projects/Rpackages/SIFS//data/output/workflow2/SHAPmaps ===</span></span></code></pre></div>
+<hr />
+</div>
+</div>
+<div id="understanding-the-output" class="section level1">
+<h1>Understanding the Output</h1>
+<div id="shapmap-interpretation" class="section level2">
+<h2>SHAPmap Interpretation</h2>
+<p>Each SHAPmap shows the spatial distribution of SHAP values for a
+specific m/z feature:</p>
+<ul>
+<li><strong>Red colors</strong> (right side of palette): Positive SHAP
+values → feature pushes prediction toward class 1 (tumor)</li>
+<li><strong>Blue colors</strong> (left side of palette): Negative SHAP
+values → feature pushes prediction toward class 0 (normal)</li>
+<li><strong>Intensity</strong>: Magnitude of the SHAP value indicates
+feature importance at that pixel</li>
+</ul>
+</div>
+<div id="feature-selection" class="section level2">
+<h2>Feature Selection</h2>
+<p>The top 10 features are ranked by <strong>mean |SHAP|</strong> across
+all pixels, representing the most important m/z values for
+classification overall.</p>
+</div>
+<div id="spatial-patterns" class="section level2">
+<h2>Spatial Patterns</h2>
+<p>The heatmaps reveal: - <strong>Localized patterns</strong>: Where
+specific m/z features are important - <strong>Tissue
+heterogeneity</strong>: Spatial variation in feature relevance -
+<strong>Boundary effects</strong>: Feature importance near tissue
+edges</p>
+<hr />
+</div>
+</div>
+<div id="session-information" class="section level1">
+<h1>Session Information</h1>
+<div class="sourceCode" id="cb10"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb10-1"><a href="#cb10-1" tabindex="-1"></a><span class="fu">sessionInfo</span>()</span>
+<span id="cb10-2"><a href="#cb10-2" tabindex="-1"></a><span class="co">#&gt; R version 4.5.3 (2026-03-11 ucrt)</span></span>
+<span id="cb10-3"><a href="#cb10-3" tabindex="-1"></a><span class="co">#&gt; Platform: x86_64-w64-mingw32/x64</span></span>
+<span id="cb10-4"><a href="#cb10-4" tabindex="-1"></a><span class="co">#&gt; Running under: Windows 11 x64 (build 26200)</span></span>
+<span id="cb10-5"><a href="#cb10-5" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb10-6"><a href="#cb10-6" tabindex="-1"></a><span class="co">#&gt; Matrix products: default</span></span>
+<span id="cb10-7"><a href="#cb10-7" tabindex="-1"></a><span class="co">#&gt;   LAPACK version 3.12.1</span></span>
+<span id="cb10-8"><a href="#cb10-8" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb10-9"><a href="#cb10-9" tabindex="-1"></a><span class="co">#&gt; locale:</span></span>
+<span id="cb10-10"><a href="#cb10-10" tabindex="-1"></a><span class="co">#&gt; [1] LC_COLLATE=English_Germany.utf8  LC_CTYPE=English_Germany.utf8   </span></span>
+<span id="cb10-11"><a href="#cb10-11" tabindex="-1"></a><span class="co">#&gt; [3] LC_MONETARY=English_Germany.utf8 LC_NUMERIC=C                    </span></span>
+<span id="cb10-12"><a href="#cb10-12" tabindex="-1"></a><span class="co">#&gt; [5] LC_TIME=English_Germany.utf8    </span></span>
+<span id="cb10-13"><a href="#cb10-13" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb10-14"><a href="#cb10-14" tabindex="-1"></a><span class="co">#&gt; time zone: Europe/Berlin</span></span>
+<span id="cb10-15"><a href="#cb10-15" tabindex="-1"></a><span class="co">#&gt; tzcode source: internal</span></span>
+<span id="cb10-16"><a href="#cb10-16" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb10-17"><a href="#cb10-17" tabindex="-1"></a><span class="co">#&gt; attached base packages:</span></span>
+<span id="cb10-18"><a href="#cb10-18" tabindex="-1"></a><span class="co">#&gt; [1] stats     graphics  grDevices utils     datasets  methods   base     </span></span>
+<span id="cb10-19"><a href="#cb10-19" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb10-20"><a href="#cb10-20" tabindex="-1"></a><span class="co">#&gt; other attached packages:</span></span>
+<span id="cb10-21"><a href="#cb10-21" tabindex="-1"></a><span class="co">#&gt; [1] viridisLite_0.4.3   data.table_1.18.2.1 moleculaR_0.9.5    </span></span>
+<span id="cb10-22"><a href="#cb10-22" tabindex="-1"></a><span class="co">#&gt; [4] xgboost_3.2.1.1     treeshap_0.4.0     </span></span>
+<span id="cb10-23"><a href="#cb10-23" tabindex="-1"></a><span class="co">#&gt; </span></span>
+<span id="cb10-24"><a href="#cb10-24" tabindex="-1"></a><span class="co">#&gt; loaded via a namespace (and not attached):</span></span>
+<span id="cb10-25"><a href="#cb10-25" tabindex="-1"></a><span class="co">#&gt;  [1] Matrix_1.7-4          gtable_0.3.6          jsonlite_2.0.0       </span></span>
+<span id="cb10-26"><a href="#cb10-26" tabindex="-1"></a><span class="co">#&gt;  [4] dplyr_1.2.0           compiler_4.5.3        spatstat.utils_3.2-2 </span></span>
+<span id="cb10-27"><a href="#cb10-27" tabindex="-1"></a><span class="co">#&gt;  [7] tidyselect_1.2.1      Rcpp_1.1.1-1.1        parallel_4.5.3       </span></span>
+<span id="cb10-28"><a href="#cb10-28" tabindex="-1"></a><span class="co">#&gt; [10] jquerylib_0.1.4       scales_1.4.0          yaml_2.3.10          </span></span>
+<span id="cb10-29"><a href="#cb10-29" tabindex="-1"></a><span class="co">#&gt; [13] fastmap_1.2.0         lattice_0.22-9        deldir_2.0-4         </span></span>
+<span id="cb10-30"><a href="#cb10-30" tabindex="-1"></a><span class="co">#&gt; [16] spatstat.univar_3.1-7 ggplot2_4.0.3         R6_2.6.1             </span></span>
+<span id="cb10-31"><a href="#cb10-31" tabindex="-1"></a><span class="co">#&gt; [19] generics_0.1.4        spatstat.geom_3.7-3   knitr_1.51           </span></span>
+<span id="cb10-32"><a href="#cb10-32" tabindex="-1"></a><span class="co">#&gt; [22] polyclip_1.10-7       tibble_3.3.1          pROC_1.19.0.1        </span></span>
+<span id="cb10-33"><a href="#cb10-33" tabindex="-1"></a><span class="co">#&gt; [25] bslib_0.10.0          pillar_1.11.1         RColorBrewer_1.1-3   </span></span>
+<span id="cb10-34"><a href="#cb10-34" tabindex="-1"></a><span class="co">#&gt; [28] rlang_1.2.0           cachem_1.1.0          xfun_0.54            </span></span>
+<span id="cb10-35"><a href="#cb10-35" tabindex="-1"></a><span class="co">#&gt; [31] sass_0.4.10           S7_0.2.2              otel_0.2.0           </span></span>
+<span id="cb10-36"><a href="#cb10-36" tabindex="-1"></a><span class="co">#&gt; [34] cli_3.6.6             magrittr_2.0.4        digest_0.6.37        </span></span>
+<span id="cb10-37"><a href="#cb10-37" tabindex="-1"></a><span class="co">#&gt; [37] grid_4.5.3            lifecycle_1.0.5       vctrs_0.7.2          </span></span>
+<span id="cb10-38"><a href="#cb10-38" tabindex="-1"></a><span class="co">#&gt; [40] evaluate_1.0.5        glue_1.8.0            farver_2.1.2         </span></span>
+<span id="cb10-39"><a href="#cb10-39" tabindex="-1"></a><span class="co">#&gt; [43] spatstat.data_3.1-9   rmarkdown_2.31        tools_4.5.3          </span></span>
+<span id="cb10-40"><a href="#cb10-40" tabindex="-1"></a><span class="co">#&gt; [46] pkgconfig_2.0.3       htmltools_0.5.8.1</span></span></code></pre></div>
+<hr />
+</div>
+<div id="references" class="section level1">
+<h1>References</h1>
+<ul>
+<li>Lundberg, S. M., &amp; Lee, S. I. (2017). A unified approach to
+interpreting model predictions. <em>Advances in Neural Information
+Processing Systems</em>, 30.</li>
+<li>TreeSHAP: <a href="https://github.com/DSMLogic/treeshap" class="uri">https://github.com/DSMLogic/treeshap</a></li>
+<li>XGBoost: <a href="https://xgboost.readthedocs.io/" class="uri">https://xgboost.readthedocs.io/</a></li>
+<li>moleculaR: <a href="https://github.com/MolecularlyImaged/moleculaR" class="uri">https://github.com/MolecularlyImaged/moleculaR</a></li>
+</ul>
+</div>
+
+
+
+<!-- code folding -->
+
+
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+  (function () {
+    var script = document.createElement("script");
+    script.type = "text/javascript";
+    script.src  = "https://mathjax.rstudio.com/latest/MathJax.js?config=TeX-AMS-MML_HTMLorMML";
+    document.getElementsByTagName("head")[0].appendChild(script);
+  })();
+</script>
+
+</body>
+</html>

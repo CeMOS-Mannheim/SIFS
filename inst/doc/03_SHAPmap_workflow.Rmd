@@ -1,0 +1,406 @@
+---
+title: "SHAPmap Visualization Workflow"
+author: "Shad Arif Mohammed"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{SHAPmap Visualization Workflow}
+  %\VignetteEngine{rmarkdown::render}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+ knitr::opts_chunk$set(
+   collapse = TRUE,
+   comment = "#>"
+ )
+```
+
+# Introduction
+
+This vignette demonstrates the complete workflow for generating **SHAP (SHapley Additive exPlanations) value spatial heatmaps** from mass spectrometry imaging (MSI) data. The workflow trains an XGBoost binary classifier, computes SHAP values using the `treeshap` package, and visualizes the results spatially on the MSI raster.
+
+## Prerequisites
+
+The following R packages are required:
+
+- **treeshap**: For computing SHAP values from tree-based models
+- **xgboost**: For training the gradient boosting classifier  
+- **moleculaR**: For MSI-specific functions (spatial window creation)
+- **data.table**: For efficient data manipulation
+- **viridisLite**: For color palettes
+
+```{r load-packages, message = FALSE}
+# Load required packages
+library(treeshap)
+library(xgboost)
+library(moleculaR)
+library(data.table)
+library(viridisLite)
+```
+
+---
+
+# Step 1: Load Input Data
+
+## Overview
+
+We load the MSI training data from the `trainSet_spmat.rds` file, which contains:
+- `$spmat`: Sparse intensity matrix (pixels × m/z features)
+- `$coordinates`: Pixel coordinates (x, y positions)
+- `$mzAxis`: m/z values for each feature column
+
+## Data Structure
+
+The data is stored as a sparse matrix in dgCMatrix format for memory efficiency. Each row represents a pixel, and each column represents an m/z feature.
+
+```{r load-data}
+# Define paths
+abs_path <- "D:/Projects/Rpackages/SIFS/"
+input_dir <- file.path(abs_path, "data/input")
+output_dir <- file.path(abs_path, "data/output/workflow2")
+
+# Load the training dataset
+train_spmat <- readRDS(file = file.path(input_dir, "trainSet_spmat.rds"))
+
+# Inspect the structure
+cat("=== trainSet_spmat Structure ===\n")
+cat("spmat dimensions:", dim(train_spmat$spmat), "\n")
+cat("coordinates: ", nrow(train_spmat$coordinates), "pixels\n")
+cat("mzAxis: ", length(train_spmat$mzAxis), "m/z features\n")
+
+# Extract components for easier access
+spmat <- train_spmat$spmat
+coords <- train_spmat$coordinates
+mz_axis <- train_spmat$mzAxis
+
+cat("\n=== Coordinate Ranges ===\n")
+cat("X range:", min(coords$x), "-", max(coords$x), "\n")
+cat("Y range:", min(coords$y), "-", max(coords$y), "\n")
+```
+
+**Key Points:**
+- The coordinate system uses pixel indices (x: 788-878, y: 138-189)
+- Total of 3,660 pixels in the tissue sample
+- 13,144 m/z features detected
+
+---
+
+# Step 2: Prepare Training Data
+
+## Overview
+
+Convert the sparse matrix to dense format and prepare feature matrix (X) and labels (y) for model training.
+
+```{r prepare-data}
+# Convert sparse matrix to dense matrix
+X_train <- as.matrix(spmat)
+
+# Set column names to m/z values (required for treeshap compatibility)
+colnames(X_train) <- as.character(mz_axis)
+
+# Load labels (binary class: tumor vs normal)
+labels <- read.csv(file = file.path(input_dir, "t3_lbls.csv"))
+y_train <- labels$t3_labels
+
+cat("=== Training Data ===\n")
+cat("X_train dimensions:", dim(X_train), "\n")
+cat("Labels:", length(y_train), "\n")
+cat("Class distribution:\n")
+print(table(y_train))
+```
+
+**Important Note:**
+We use the **original m/z values** from `mz_axis`, NOT the rounded column names. The m/z values directly from the data preserve full precision.
+
+---
+
+# Step 3: Train XGBoost Classifier
+
+## Overview
+
+Train an XGBoost gradient boosting classifier for binary classification. We use simplified parameters for faster computation while maintaining reasonable accuracy.
+
+```{r train-model, message = FALSE}
+# XGBoost training parameters
+params <- list(
+  objective = "binary:logistic",
+  eval_metric = "auc",
+  max_depth = 6,
+  eta = 0.1,
+  nthread = 2,
+  verbosity = 0
+)
+
+# Train the model
+cat("Training XGBoost model...\n")
+xgb_model <- xgboost(
+  data = X_train,
+  label = y_train,
+  params = params,
+  nrounds = 100,
+  verbose = FALSE
+)
+
+# Check training accuracy
+train_pred <- predict(xgb_model, X_train)
+Binarized_train_pred <- ifelse(train_pred < 0.5, yes = 0, no = 1)
+train_auc <- pROC::auc(Binarized_train_pred, y_train)
+cat(sprintf("Training AUC: %.4f\n", train_auc))
+```
+
+---
+
+# Step 4: Compute SHAP Values
+
+## Overview
+
+Use the `treeshap` package to compute SHAP values. This requires:
+
+1. **Unify** the model using `xgboost.unify()`
+2. Compute SHAP values with `treeshap()`
+
+The unified model format is required by treeshap to compute SHAP values efficiently. The SHAP values are stored in the `$shaps` component of the results.
+
+```{r compute-shap, message = FALSE}
+cat("Computing SHAP values...\n")
+
+# Step 4a: Unify the XGBoost model
+# This converts the model to treeshap's required format
+unified_model <- xgboost.unify(xgb_model, X_train)
+
+# Step 4b: Compute SHAP values
+# verbose = FALSE suppresses progress output
+shap_results <- treeshap(unified_model, X_train, verbose = FALSE)
+
+# Extract SHAP values from the $shaps component
+shap_values <- shap_results$shaps
+
+cat("SHAP values dimensions:", nrow(shap_values), "x", ncol(shap_values), "\n")
+cat("SHAP values class:", class(shap_values), "\n")
+```
+
+---
+
+# Step 5: Calculate Global SHAP Importance
+
+## Overview
+
+Compute the mean absolute SHAP value for each feature to determine global importance. Rank features by importance to identify the top contributors to classification.
+
+```{r global-importance}
+# Set feature names as m/z values
+colnames(shap_values) <- as.character(mz_axis)
+
+# Calculate mean absolute SHAP for each feature
+mean_abs_shap <- colMeans(abs(shap_values))
+
+# Create importance dataframe
+global_shap_df <- data.frame(
+  feature = names(mean_abs_shap),
+  mean_abs_shap = as.numeric(mean_abs_shap)
+)
+
+# Sort by importance (descending)
+global_shap_df <- global_shap_df[order(-global_shap_df$mean_abs_shap), ]
+
+# Get top 10 features
+top10_mz <- global_shap_df$feature[1:10]
+
+cat("=== Top 10 m/z by Mean |SHAP| ===\n")
+print(top10_mz)
+
+# Save to CSV
+fwrite(global_shap_df, file = file.path(output_dir, "global_shap_importance.csv"))
+```
+
+---
+
+# Step 6: Create Local SHAP Contributions
+
+## Overview
+
+For each pixel, extract the SHAP contribution values for the top 10 features. This creates the local SHAP matrix used for spatial visualization.
+
+```{r local-contributions}
+# Select top 10 features
+local_shap_df <- as.data.frame(shap_values[, top10_mz])
+
+# Add proper column names
+colnames(local_shap_df) <- top10_mz
+
+# Save to CSV
+fwrite(local_shap_df, file = file.path(output_dir, "local_shap_contributions.csv"))
+
+cat("Local SHAP dimensions:", dim(local_shap_df), "\n")
+cat("Saved to:", file.path(output_dir, "local_shap_contributions.csv"), "\n")
+```
+
+---
+
+# Step 7: Generate Spatial SHAP Heatmaps
+
+## Overview
+
+Create spatial heatmap visualizations (SHAPmaps) for each of the top 10 m/z features. This workflow:
+
+1. Creates a matrix matching the pixel coordinate system
+2. Maps SHAP values to spatial positions
+3. Applies a diverging color palette
+4. Overlays the tissue boundary
+
+## Understanding the Coordinate System
+
+In R's `image()` function:
+- **Matrix rows** correspond to **y-axis** (vertical direction)
+- **Matrix columns** correspond to **x-axis** (horizontal direction)
+- `z[row, col]` → `image(x, y, z)` where `length(x) = ncol(z)` and `length(y) = nrow(z)`
+
+## Matrix Construction
+
+The matrix is constructed such that:
+- Rows correspond to y-coordinates (52 unique values: 138-189)
+- Columns correspond to x-coordinates (91 unique values: 788-878)
+
+```{r generate-heatmaps}
+# Create output directory
+shapmap_dir <- file.path(output_dir, "SHAPmaps")
+dir.create(shapmap_dir, recursive = TRUE, showWarnings = FALSE)
+
+# Get coordinate ranges
+min_x <- min(coords$x)
+min_y <- min(coords$y)
+max_x <- max(coords$x)
+max_y <- max(coords$y)
+
+nx <- as.integer(max_x - min_x + 1)  # 91
+ny <- as.integer(max_y - min_y + 1)  # 52
+
+cat(sprintf("Raster dimensions: nx=%d, ny=%d\n", nx, ny))
+
+# Create spatial window for boundary
+spwin <- createSpatialWindow(pixelCoords = coords)
+bdry <- spwin$bdry[[1]]
+
+# Custom color palette: blue -> magenta -> red
+pastelPalette <- colorRampPalette(c("#018bfb", "#027af4", "#ae12a5", "#cc0095", "#ff024f"))
+
+# Colorbar helper function
+add_colorbar <- function(col, breaks_vals, title) {
+  usr <- par("usr")
+  xpad <- (usr[2] - usr[1]) * 0.02
+  xloc <- usr[2] + xpad
+  yloc <- seq(usr[3], usr[4], length.out = length(col) + 1)
+  rect(rep(xloc, length(col)), yloc[-length(yloc)],
+       rep(xloc + xpad * 2, length(col)), yloc[-1],
+       col = col, border = NA)
+  axis(side = 4, at = yloc, labels = breaks_vals, las = 1, cex.axis = 0.7)
+  mtext(side = 4, title, at = mean(yloc), line = 2.5, las = 0, cex = 0.8)
+}
+
+# Generate heatmaps for top 10 features
+for (i in 1:10) {
+  mz_val <- top10_mz[i]
+  
+  # Get SHAP values for this feature
+  shap_vals <- local_shap_df[[as.character(mz_val)]]
+  
+  # Calculate quantile bounds for color scaling
+  q05 <- quantile(shap_vals, 0.05)
+  q95 <- quantile(shap_vals, 0.95)
+  shap_range <- max(abs(q05), abs(q95))
+  
+  # Create matrix: rows = x (91), columns = y (52) to match image() expectations
+  # image() expects: nrow(z) = length(y), ncol(z) = length(x)
+  mat <- matrix(NA, nrow = nx, ncol = ny)
+  
+  for (j in 1:nrow(coords)) {
+    xi <- coords$x[j] - min_x + 1
+    yi <- coords$y[j] - min_y + 1
+    if (xi >= 1 && xi <= nx && yi >= 1 && yi <= ny) {
+      mat[xi, yi] <- shap_vals[j]
+    }
+  }
+  
+  # Define output file
+  png_file <- file.path(shapmap_dir, sprintf("SHAPmap_%02d_mz_%.3f.svg", i, as.numeric(mz_val)))
+  
+  # Create plot
+  svg(png_file, width = 12, height = 10)
+  par(mar = c(4, 4, 3, 6), oma = c(0, 0, 2, 0))
+  
+  # Color settings
+  ncol <- 100
+  cols <- pastelPalette(ncol)
+  breaks_vals <- seq(-shap_range, shap_range, length.out = ncol + 1)
+  
+  # Axis vectors
+  x_axis <- seq(min_x, max_x, length.out = nx)
+  y_axis <- seq(min_y, max_y, length.out = ny)
+  
+  # Create heatmap
+  image(x = x_axis, y = y_axis, z = mat, col = cols,
+        breaks = breaks_vals,
+        xlab = "X (pixels)", ylab = "Y (pixels)",
+        main = "", useRaster = TRUE)
+  
+  # Add tissue boundary
+  lines(bdry$x, bdry$y, col = "black", lwd = 2.5)
+  
+# Add title
+mtext(sprintf("m/z = %.3f (Rank #%d)", as.numeric(mz_val), i), side = 3, outer = TRUE,
+        cex = 1.5, font = 2, line = 0)
+  
+  # Add colorbar
+  add_colorbar(col = cols, breaks_vals = round(breaks_vals, 2), title = "SHAP")
+  
+  dev.off()
+  
+  cat(sprintf("Generated: %s\n", basename(png_file)))
+}
+
+cat(sprintf("\n=== Complete! %d SHAPmaps saved to %s ===\n", 10, shapmap_dir))
+```
+
+---
+
+# Understanding the Output
+
+## SHAPmap Interpretation
+
+Each SHAPmap shows the spatial distribution of SHAP values for a specific m/z feature:
+
+- **Red colors** (right side of palette): Positive SHAP values → feature pushes prediction toward class 1 (tumor)
+- **Blue colors** (left side of palette): Negative SHAP values → feature pushes prediction toward class 0 (normal)
+- **Intensity**: Magnitude of the SHAP value indicates feature importance at that pixel
+
+## Feature Selection
+
+The top 10 features are ranked by **mean |SHAP|** across all pixels, representing the most important m/z values for classification overall.
+
+## Spatial Patterns
+
+The heatmaps reveal:
+- **Localized patterns**: Where specific m/z features are important
+- **Tissue heterogeneity**: Spatial variation in feature relevance
+- **Boundary effects**: Feature importance near tissue edges
+
+---
+
+# Session Information
+
+```{r session-info}
+sessionInfo()
+```
+
+---
+
+# References
+
+- Lundberg, S. M., & Lee, S. I. (2017). A unified approach to interpreting model predictions. *Advances in Neural Information Processing Systems*, 30. 
+- SHAP paper DOI:  https://doi.org/10.48550/arXiv.1705.07874
+
+- TreeSHAP: https://github.com/ModelOriented/treeshap
+- XGBoost: https://xgboost.readthedocs.io/
+- moleculaR: https://github.com/CeMOS-Mannheim/moleculaR
+- SIFS : https://github.com/CeMOS-Mannheim/SIFS
