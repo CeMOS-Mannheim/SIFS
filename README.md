@@ -83,8 +83,11 @@ library(SIFS)
 
 If you use SIFS in academic work, please cite the associated manuscript:
 
-> Citation will be included once the article is published. 
+> Mohammed, S.A., Abu Sammour, D., Hoffmann, D.C., Sievers, P., Bausbacher, T., Hahn, M., Ucal, Y., Mildenberger, I., Opitz, C.A., Schmidt, S. and Platten, M., 2026. Spatially Informed Feature Selection and Machine Learning in Matrix‐Assisted Laser Desorption/Ionization Imaging for Cohort‐Scale Molecular Tissue Phenomics in Glioblastoma. Advanced Intelligent Discovery, p.e70134.
 
+> DOI: https://doi.org/10.1002/aidi.70134
+
+> Link to Article: https://advanced.onlinelibrary.wiley.com/doi/10.1002/aidi.70134
 
 ---
 
@@ -105,6 +108,7 @@ If you report a bug, please include:
 * a short description of the MSI data structure (dimensions, file format, preprocessing steps).
 
 ---
+
 
 ## Contact
 
