@@ -1,7 +1,7 @@
 ---
 title: "SIFS Workflow: Spatially Informed Feature Selection"
 author: "Shad Arif Mohammed"
-date: `r Sys.Date()`
+date: "`r Sys.Date()`"
 output: rmarkdown::html_vignette
 vignette: >
   %\VignetteIndexEntry{SIFS Workflow: Spatially Informed Feature Selection}
@@ -76,7 +76,8 @@ shap_results <- sifs_compute_shap(
   labels = labels,
   roi_name = "VT",
   train_ratio = 0.8,
-  nrounds = 200
+  nrounds = 200,
+  positive_class = 0  # Vt_vs_all_lbls: 0 = VT, 1 = non-VT
 )
 
 # View top features
@@ -113,13 +114,16 @@ based on their spatial overlap with the target ROI.
 # Note: In a full workflow, DSC values would be computed from the MPM objects.
 # Here we demonstrate the HMCS calculation with example DSC data:
 
+dsc_df <- data.frame(
+  mzList = filtered$filtered_df$mzList,
+  dsc_mpm_VT = runif(nrow(filtered$filtered_df)),
+  dsc_mpm_nonVT = runif(nrow(filtered$filtered_df))
+)
+
 hmcs_results <- sifs_calculate_hmcs(
-  dsc_df = data.frame(
-    mzList = filtered$filtered_df$mzList,
-    dsc_mpm_VT = runif(nrow(filtered$filtered_df)),
-    dsc_mpm_Nec = runif(nrow(filtered$filtered_df))
-  ),
-  focus_roi = "VT"
+  dsc_df = dsc_df,
+  focus_roi = "VT",
+  reference_roi = "nonVT"
 )
 
 # View top HMCS values
@@ -153,7 +157,10 @@ results <- sifs_run_workflow(
   mis_path = mis_path,
   spmat_path = spmat_path,
   roi_names = c("VT", "Nec", "PreNec"),
-  focus_roi = "VT"
+  focus_roi = "VT",
+  dsc_df = dsc_df,
+  reference_roi = "nonVT",
+  positive_class = 0
 )
 
 # Access results at each stage

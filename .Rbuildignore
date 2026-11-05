@@ -3,3 +3,13 @@
 ^R/treeshap_run\.R$
 ^R/run_treeshap_workflow\.R$
 ^R/install_treeshap\.R$
+^R/install_treeshap\.Rout$
+^R/run_treeshap_workflow_v2\. R$
+^\.claude$
+^\.ignore$
+^\.mcp\.json$
+^\.github$
+^graft$
+^dataset_for_SIFS$
+^SIFS\.Rcheck$
+^SIFS_.*\.tar\.gz$

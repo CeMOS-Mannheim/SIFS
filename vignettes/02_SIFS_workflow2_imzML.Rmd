@@ -1,0 +1,459 @@
+---
+title: "SIFS Workflow 2: From imzML to Spatially Informed Feature Selection"
+author: "Shad Arif Mohammed"
+date: "`r Sys.Date()`"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{SIFS Workflow 2: From imzML to Spatially Informed Feature Selection}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 5,
+  message = FALSE,
+  warning = FALSE
+)
+
+# The example dataset is intentionally kept outside the package.
+data_dir <- Sys.getenv("SIFS_DATA_DIR", unset = "")
+if (!nzchar(data_dir)) {
+  candidates <- c(
+    file.path("..", "dataset_for_SIFS"),
+    "dataset_for_SIFS"
+  )
+  data_dir <- candidates[file.exists(candidates)][1L]
+  if (is.na(data_dir)) data_dir <- candidates[1L]
+}
+
+imzml_file <- file.path(
+  data_dir, "imzML", "Train_XIII_t3",
+  "positive-XIII-83318-recalibrated.imzML"
+)
+labels_file <- file.path(
+  data_dir, "spectraLabels", "Lbls_df_Pos_all.rds"
+)
+fwhm_file <- file.path(
+  data_dir, "fwhm_pos", "fwhm_obj_pos.rds"
+)
+
+have_data <- all(
+  file.exists(imzml_file),
+  file.exists(labels_file),
+  file.exists(fwhm_file)
+)
+
+output_dir <- Sys.getenv(
+  "SIFS_OUTPUT_DIR",
+  unset = file.path(tempdir(), "SIFS_results")
+)
+if (!nzchar(output_dir)) {
+  output_dir <- file.path(tempdir(), "SIFS_results")
+}
+dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
+# 50 is the recommended default. SIFS_TOP_N is useful when testing the
+# vignette with a smaller candidate set.
+top_n_hmcs <- suppressWarnings(
+  as.integer(Sys.getenv("SIFS_TOP_N", unset = "50"))
+)
+if (is.na(top_n_hmcs) || top_n_hmcs < 1L) top_n_hmcs <- 50L
+top_n_plot <- min(10L, top_n_hmcs)
+```
+
+# Overview
+
+This vignette starts from an imzML file and walks through the complete SIFS
+workflow:
+
+1. Load and process the imzML file with `sifs_imzML_proc()`.
+2. Select the matching sample from the label table and prepare the binary
+   response.
+3. Train an XGBoost classifier.
+4. Compute SHAP values for the VT (viable tumor) class.
+5. Compute binary HMCS values with the SPP/MPM/DSC spatial workflow.
+6. Rank and visualize the m/z features.
+
+The workflow uses a single label column, `Vt_vs_all_lbls`:
+
+- `Vt_vs_all_lbls == "0"`: VT / tumor.
+- `Vt_vs_all_lbls == "1"`: non-tumor.
+
+No necrosis labels or other label columns are used in this vignette. For
+XGBoost and SHAP, the response is recoded so that **1 = tumor** and
+**0 = non-tumor**.
+
+The binary HMCS comparison is therefore:
+
+```text
+HMCS_VT = DSC(MPM hotspot, VT) - DSC(MPM hotspot, non-VT)
+```
+
+The non-VT reference is the complement of the VT mask. This is the Option A
+workflow: it avoids reading necrosis labels while preserving a binary
+VT-versus-reference HMCS contrast. One can use the same logic of binary label encoding for any other biological class(es).
+
+```{r packages, message = FALSE}
+library(SIFS)
+```
+
+## Input data
+
+The example uses three files:
+
+- `positive-XIII-83318-recalibrated.imzML`
+- `Lbls_df_Pos_all.rds`
+- `fwhm_obj_pos.rds`
+
+The dataset is shipped with the package. Set `SIFS_DATA_DIR` to the
+directory containing `imzML/`, `spectraLabels/`, and `fwhm_pos/`. If the
+variable is not set, the vignette checks `../dataset_for_SIFS` and
+`dataset_for_SIFS` relative to the working directory.
+
+```{r data-availability, eval = !have_data, results = "asis"}
+cat(
+  "**External dataset not found.** The code chunks below are shown but not ",
+  "evaluated. Set `SIFS_DATA_DIR` to the folder that contains ",
+  "`imzML/`, `spectraLabels/`, and `fwhm_pos/` to run the full workflow."
+)
+```
+
+# 1. Load and process the imzML file
+
+The method named `sifs_imzML_proc()` performs the imzML-specific work in one place:
+
+- reads the spectra,
+- bins peaks using the supplied FWHM object,
+- removes low-frequency peaks,
+- creates the `sparseIntensityMatrix`,
+- selects the requested/required Tissue sample from the labels, and
+- aligns label rows to the sparse matrix rows.
+
+The FWHM-derived binning tolerance is
+
+```text
+FWHM at FWHM_setUp / FWHM_setUp
+```
+
+With `FWHM_setUp = 400` (can be changed to 200 for metabolites), this focuses the binning on the lipid region. The
+resulting tolerance is recorded in `obj$meta$fwhm_tolerance`.
+
+```{r load-imzml, eval = have_data}
+obj <- sifs_imzML_proc(
+  imzML_path = imzml_file,
+  imzML_annotations_path = labels_file,
+  fwhm_path = fwhm_file,
+  labelType = "rds",
+  sample_id = "t3",
+  FWHM_setUp = 400,
+  minFreq = 0.01
+)
+```
+
+The above snippet generates the `obj` object which contains a list of important objects required for the downstream processing, ML classification, SHAP calculation, and HMCS based feature ranking for the ROI. 
+
+```{r}
+str(obj, max.level = 1)
+# Expected output: 
+# List of 7
+#  $ spmat :Formal class 'dgCMatrix' [package "Matrix"] with 6 slots
+#  $ spData:List of 3
+#   ..- attr(*, "class")= chr "sparseIntensityMatrix"
+#  $ coords:'data.frame':	3660 obs. of  2 variables:
+#  $ lbls  :'data.frame':	3660 obs. of  12 variables:
+#   ..- attr(*, "sifs_sample_id")= chr "t3"
+#   ..- attr(*, "sifs_label_rows_total")= int 255824
+#  $ spwin :List of 5
+#   ..- attr(*, "class")= chr "owin"
+#  $ mzList: num [1:8353] 100 100 100 100 100 ...
+#  $ meta  :List of 11
+```
+
+
+```{r inspect-imzml, eval = have_data}
+dim(obj$spmat)
+class(obj$spData)
+length(obj$mzList)
+nrow(obj$lbls)
+table(obj$lbls$pos_refNames)
+
+data.frame(
+  sample = obj$meta$sample_id,
+  spectra = obj$meta$n_spectra,
+  features = obj$meta$n_features,
+  fwhm_tolerance = signif(obj$meta$fwhm_tolerance, 6),
+  minFreq = obj$meta$minFreq
+)
+```
+
+`obj$spData` is the `sparseIntensityMatrix` object with `spmat`, `mzAxis`, and `coordinates`. It is the object used by the spatial workflow; the vignette does not create a separate sparse matrix or load a precomputed SPMAT object.
+
+The `spmat` element is the matrix used for XGBoost. The labels contain only the selected sample (`t3`) and are in the same row order as `spmat`.
+
+```{r alignment-check, eval = have_data}
+stopifnot(
+  nrow(obj$lbls) == nrow(obj$spmat),
+  identical(obj$coords$x, obj$lbls$xCoord),
+  identical(obj$coords$y, obj$lbls$yCoord),
+  length(obj$mzList) == ncol(obj$spmat),
+  inherits(obj$spData, "sparseIntensityMatrix")
+)
+```
+
+# 2. Prepare the binary response
+`note`: 
+
+Only `Vt_vs_all_lbls` is used. The raw encoding is 0 = tumor and 1 = non-tumor;
+The recoded response used by the model is 1 = tumor.
+
+The positive class for most ML/DL classifiers are set to 1 by default, for that the following rectification is made.
+
+```{r labels, eval = have_data}
+lbls <- obj$lbls
+
+y <- as.integer(as.character(lbls$Vt_vs_all_lbls) == "0")
+
+table(y)
+```
+
+```{r label-map, eval = have_data, fig.cap = "VT and non-VT pixels in the selected imzML section."}
+blu = "#99ffff"
+blk = "#333333"
+plot(
+  obj$coords$x,
+  obj$coords$y,
+  col = ifelse(y == 1L,blk, blu ),
+  pch = 15,
+  cex = 1.1,
+  asp = 1,
+  xlim = range(obj$coords$x),
+  ylim = rev(range(obj$coords$y)),
+  xlab = "x (pixel)",
+  ylab = "y (pixel)",
+  main = "VT labels"
+)
+legend(
+  "bottomright",
+  legend = c("VT (1)", "non-VT (0)"),
+  col = c(blk, blu),
+  pch = 15,
+  bty = "n"
+)
+```
+
+The model uses 3,660 pixels in total. In this section, 823 pixels are VT and
+2,837 are non-VT. The `unwanted_spectra` column is intentionally not read.
+
+# 3. Train XGBoost and compute SHAP values
+
+`sifs_compute_shap()` trains the binary classifier and computes SHAP values for
+the VT pixels. The response passed to the function is the recoded `y`, so the
+function's `positive_class = 1` corresponds to tumor.
+
+```{r shap, eval = have_data}
+shap_results <- sifs_compute_shap(
+  spmat_obj = obj$spData,
+  labels = y,
+  roi_name = "VT",
+  train_ratio = 0.8,
+  nrounds = 200L,
+  positive_class = 1L,
+  seed = 123L
+)
+
+head(shap_results$shap_df, 10)
+```
+
+The SHAP data frame has one row per m/z feature. It is ordered by the absolute
+mean SHAP value for the VT class.
+
+# 4. Remove features with all-zero SHAP values
+
+Most m/z features have no SHAP contribution. `sifs_filter_features()` removes
+features whose SHAP values are zero across all pixels.
+
+```{r filter, eval = have_data}
+filtered <- sifs_filter_features(
+  shap_results = shap_results,
+  focus_roi = "VT"
+)
+
+nrow(filtered$filtered_df)
+filtered$removed_pct
+```
+
+The filtered data frame is used to choose the candidate m/z features for the
+spatial HMCS calculation. By default, the top 50 SHAP-ranked features are
+tested; this keeps the SPP/MPM/DSC step practical while preserving the strongest
+candidates.
+
+# 5. Compute binary HMCS values
+
+The spatial workflow uses `sifs_compute_hmcs()`:
+
+1. `searchAnalyte()` builds an analyte point pattern for an m/z feature.
+2. `probMap()` estimates a spatially significant hotspot map.
+3. `dsc()` compares the hotspot window with the VT and non-VT windows.
+4. `HMCS_VT = DSC_VT - DSC_nonVT`.
+
+The MPM analysis is seeded (`seed = 123`) and uses a fixed bandwidth
+(`bw = 2.5`) so the ranking is reproducible.
+
+```{r hmcs, eval = have_data}
+fwhm_obj <- readRDS(fwhm_file)
+
+vt <- as.character(lbls$Vt_vs_all_lbls) == "0"
+nonvt <- !vt
+
+mz_top <- head(filtered$filtered_df$mzList, top_n_hmcs)
+
+hmcs_df <- sifs_compute_hmcs(
+  spData = obj$spData,
+  mz = mz_top,
+  fwhm_obj = fwhm_obj,
+  vt = vt,
+  nonvt = nonvt,
+  spwin = obj$spwin,
+  bw = 2.5,
+  seed = 123,
+  min_points = 100,
+  verbose = FALSE
+)
+
+# Confirm the final binary HMCS with the package calculator.
+hmcs_df$HMCS_VT <- HMCS_calculatorBinary(
+  hmcs_df,
+  focusROI = "VT",
+  referenceROI = "nonVT"
+)
+
+hmcs_df <- hmcs_df[order(-hmcs_df$HMCS_VT), , drop = FALSE]
+
+knitr::kable(
+  head(hmcs_df, 10),
+  digits = 4,
+  caption = "Top m/z features ranked by binary HMCS."
+)
+```
+
+Positive HMCS values mean that the MPM hotspot for a feature overlaps the VT
+region more than the non-VT region. Negative values indicate the opposite
+pattern.
+
+# 6. Visualize the rankings
+
+```{r visualize, eval = have_data}
+hmcs_named <- stats::setNames(hmcs_df$HMCS_VT, hmcs_df$mzList)
+
+viz <- sifs_visualize(
+  hmcs_results = hmcs_named,
+  shap_df = filtered$filtered_df,
+  output_dir = output_dir,
+  top_n = top_n_plot
+)
+
+viz$hmcs_bar
+viz$shap_bar
+
+cat("Plots written to:", attr(viz, "output_dir"), "\n")
+```
+
+The HMCS bar plot shows the strongest positive spatial associations with VT.
+The SHAP bar plot shows the features with the largest mean absolute SHAP
+contribution. The two rankings answer related but different questions:
+
+- **SHAP** asks which features the classifier uses most strongly.
+- **HMCS** asks which features have hotspot maps that spatially resemble VT
+  more than the non-VT reference.
+
+# 7. Reproducibility notes
+
+The example fixes the following settings:
+
+- `sample_id = "t3"`
+- `FWHM_setUp = 400`
+- `minFreq = 0.01`
+- `seed = 123` for the train/test split and model
+- `seed = 123` for `probMap()`
+- `bw = 2.5` for the MPM bandwidth
+- `top_n_hmcs = 50` for the HMCS candidate set
+
+The FWHM binning step is required. On this dataset, FWHM binning alone leaves
+more than 500,000 features; `minFreq = 0.01` reduces the axis to approximately
+8,300 features, which is practical for XGBoost, treeshap, and the SPP/MPM/DSC
+loop.
+
+## Visualize MPMs for top n m/z
+
+A. SHAP values
+
+```{r}
+
+mz_top_10 <- shap_results$shap_df$mzList[1:10]
+
+mpms <- lapply(mz_top_10, function(mz) {
+  moleculaR::probMap(
+    moleculaR::searchAnalyte(
+      m            = mz,
+      fwhm         = moleculaR::getFwhm(fwhm_obj, mz),
+      spData       = obj$spData,
+      spwin        = obj$spwin
+    )
+  )
+})
+
+op <- par(mfrow = c(2, 5), mar = c(2, 2, 2, 1), oma = c(0, 0, 2, 0))
+for (i in seq_along(mpms)) {
+  moleculaR:::plot.molProbMap(mpms[[i]], what = "MPM")
+  title(sprintf("m/z %.3f", mz_top_10[i]), cex.main = 0.9)
+}
+mtext("Top 10 m/z by mean |SHAP|", side = 3, outer = TRUE, line = 0, font = 2)
+par(op)
+
+
+
+
+
+```
+
+
+B. HMCS values
+
+
+```{r}
+
+mz_top_10 <- hmcs_df$mzList[1:10]
+
+mpms <- lapply(mz_top_10, function(mz) {
+  moleculaR::probMap(
+    moleculaR::searchAnalyte(
+      m            = mz,
+      fwhm         = moleculaR::getFwhm(fwhm_obj, mz),
+      spData       = obj$spData,
+      spwin        = obj$spwin
+    )
+  )
+})
+
+op <- par(mfrow = c(2, 5), mar = c(2, 2, 2, 1), oma = c(0, 0, 2, 0))
+for (i in seq_along(mpms)) {
+  moleculaR:::plot.molProbMap(mpms[[i]], what = "MPM")
+  title(sprintf("m/z %.3f", mz_top_10[i]), cex.main = 0.9)
+}
+mtext("Top 10 m/z by HMCS scoring", side = 3, outer = TRUE, line = 0, font = 2)
+par(op)
+
+
+
+
+
+```
+
+
+```{r session-info}
+sessionInfo()
+```

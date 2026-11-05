@@ -20,12 +20,18 @@
 
 
 Zero_remover <- function(df, col_idx, ...) {
-      UseDataTable <- is.data.table(df)
-      if (!UseDataTable) {
-        mat <- as.matrix(df[, col_idx, drop = FALSE])
-        df[rowSums(mat) != 0, , drop = FALSE]
+      is_data_table <- inherits(df, "data.table")
+
+      # Work on a data frame internally so that both data.frame and
+      # data.table inputs use the same non-standard-evaluation-free path.
+      df <- as.data.frame(df)
+      mat <- as.matrix(df[, col_idx, drop = FALSE])
+      keep <- rowSums(abs(mat), na.rm = TRUE) != 0
+      out <- df[keep, , drop = FALSE]
+
+      if (is_data_table) {
+        data.table::as.data.table(out)
       } else {
-        mat <- as.matrix(df[, ..col_idx])
-        df[rowSums(mat) != 0]
+        out
       }
 }

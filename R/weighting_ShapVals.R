@@ -25,7 +25,7 @@
 
 
 # Function to weigh SHAP values based on different conditions
-SHAP_weighing <- function(df, focusColumn = "VtShap", condition = which_shap_focus, weighted = FALSE, ...) {
+SHAP_weighing <- function(df, focusColumn = "VtShap", condition = "pos", weighted = FALSE, ...) {
 
       # Initialize a list to store weighted values
       weightedValues <- list()

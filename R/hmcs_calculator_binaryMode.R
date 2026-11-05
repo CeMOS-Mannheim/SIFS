@@ -1,32 +1,41 @@
-#' HMCS calcualtor for binary datasets (Example: viable tumor vs all)
+#' HMCS calculator for binary datasets
 #'
-#' This functions calculates HMCS values for binary comparisons.  
-#' 
+#' Calculates HMCS values for a binary comparison, for example viable tumor
+#' (VT) versus a reference region.
 #'
-#' @param DSC_df  a dataframe, containing the following vectors: mzList, dsc_mpm_VT. 
-#' @param focusROI  a character, specifying which tissue histology feaure you want to focus on, for example: "VT".
-#' @param regions a `regions` object, see `?getRegions`.
-#' @param ... ignored.
+#' @param DSC_df A data frame containing `mzList` and the columns
+#'   `dsc_mpm_<focusROI>` and `dsc_mpm_<referenceROI>`.
+#' @param focusROI Character string specifying the tissue feature to focus on,
+#'   for example `"VT"`.
+#' @param referenceROI Character string specifying the comparison region.
+#'   Defaults to `"Nec"` for backward compatibility. Use `"nonVT"` for a
+#'   binary VT versus non-VT contrast that does not require necrosis labels.
+#' @param ... Ignored.
 #'
-#'
-#' @return
-#' Calculates HMCS in binary mode, returns HMCS values from DSC.
+#' @return A numeric vector of HMCS values.
 #'
 #' @export
 #'
 #' @author Shad Arif Mohammed, \email{s.mohammed@doktoranden.hs-mannheim.de}
-#'
+HMCS_calculatorBinary <- function(DSC_df,
+                                  focusROI = "VT",
+                                  referenceROI = "Nec",
+                                  ...) {
+  focus_col <- paste0("dsc_mpm_", focusROI)
+  ref_col <- paste0("dsc_mpm_", referenceROI)
 
+  if (!is.data.frame(DSC_df)) {
+    stop("`DSC_df` must be a data frame.", call. = FALSE)
+  }
 
-HMCS_calculatorBinary <- function(DSC_df, focusROI = "VT", ...){
-      # equation
-      if(focusROI == "VT"){
-            hmcs_VT <- (DSC_df$dsc_mpm_VT)- (DSC_df$dsc_mpm_Nec )#+ DSC_df$dsc_PreNec
-            return(hmcs_VT)
-      } else if(focusROI == "Nec"){
-            hmcs_Nec <- (DSC_df$dsc_mpm_Nec)- (DSC_df$dsc_mpm_VT)# + DSC_df$dsc_PreNec
-            return(hmcs_Nec)
-      }
+  if (!all(c("mzList", focus_col, ref_col) %in% names(DSC_df))) {
+    missing_cols <- setdiff(c("mzList", focus_col, ref_col), names(DSC_df))
+    stop(
+      "`DSC_df` is missing column(s): ",
+      paste(missing_cols, collapse = ", "),
+      call. = FALSE
+    )
+  }
 
-
+  DSC_df[[focus_col]] - DSC_df[[ref_col]]
 }

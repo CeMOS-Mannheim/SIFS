@@ -2,24 +2,29 @@
 % Please edit documentation in R/hmcs_calculator_binaryMode.R
 \name{HMCS_calculatorBinary}
 \alias{HMCS_calculatorBinary}
-\title{HMCS calcualtor for binary datasets (Example: viable tumor vs all)}
+\title{HMCS calculator for binary datasets}
 \usage{
-HMCS_calculatorBinary(DSC_df, focusROI = "VT", ...)
+HMCS_calculatorBinary(DSC_df, focusROI = "VT", referenceROI = "Nec", ...)
 }
 \arguments{
-\item{DSC_df}{a dataframe, containing the following vectors: mzList, dsc_mpm_VT.}
+\item{DSC_df}{A data frame containing \code{mzList} and the columns
+\verb{dsc_mpm_<focusROI>} and \verb{dsc_mpm_<referenceROI>}.}
 
-\item{focusROI}{a character, specifying which tissue histology feaure you want to focus on, for example: "VT".}
+\item{focusROI}{Character string specifying the tissue feature to focus on,
+for example \code{"VT"}.}
 
-\item{...}{ignored.}
+\item{referenceROI}{Character string specifying the comparison region.
+Defaults to \code{"Nec"} for backward compatibility. Use \code{"nonVT"} for a
+binary VT versus non-VT contrast that does not require necrosis labels.}
 
-\item{regions}{a \code{regions} object, see \code{?getRegions}.}
+\item{...}{Ignored.}
 }
 \value{
-Calculates HMCS in binary mode, returns HMCS values from DSC.
+A numeric vector of HMCS values.
 }
 \description{
-This functions calculates HMCS values for binary comparisons.
+Calculates HMCS values for a binary comparison, for example viable tumor
+(VT) versus a reference region.
 }
 \author{
 Shad Arif Mohammed, \email{s.mohammed@doktoranden.hs-mannheim.de}

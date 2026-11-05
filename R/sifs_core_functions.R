@@ -11,7 +11,7 @@
 #'   \item{mis}{The MIS object}
 #'   \item{spmat}{The SPMAT object}
 #'   \item{coordinates}{Data frame with x, y coordinates per ROI}
-#'   \ roi_info}{List with ROI metadata}
+#'   \item{roi_info}{List with ROI metadata}
 #'
 #' @export
 #'
@@ -56,17 +56,23 @@ sifs_load_data <- function(mis_path, spmat_path, roi_names = NULL) {
 #' xgboost and treeshap. This replaces the manual multi-chunk approach
 #' in the vignette with a single call.
 #'
-#' @param spmat_obj Sparse intensity matrix object from moleculaR
-#' @param labels Factor vector of class labels (0/1)
-#' @param roi_name Character string, name of the ROI being analyzed
-#' @param train_ratio Ratio of training data (default 0.8)
-#' @param xgb_params List of xgboost parameters
-#' @param nrounds Number of boosting rounds (default 200)
+#' @param spmat_obj Sparse intensity matrix object from moleculaR, or a matrix.
+#' @param labels Vector of class labels (0/1).
+#' @param roi_name Character string, name of the ROI being analyzed.
+#' @param train_ratio Ratio of training data (default 0.8).
+#' @param xgb_params List of xgboost parameters.
+#' @param nrounds Number of boosting rounds (default 200).
+#' @param positive_class Value of `labels` that represents the ROI. The
+#'   default is `1`. Internally the model is always trained with the ROI as 1.
+#' @param seed Integer seed used for the stratified split (default 123).
 #'
 #' @return A list containing:
-#'   \item{shap_df}{Data frame with mz, Pos_SHAP, Neg_SHAP per ROI}
-#'   \item{model}{The trained xgboost model}
-#'   \item{train_idx}{Training sample indices}
+#'   \item{shap_df}{Data frame with m/z and mean SHAP for the ROI.}
+#'   \item{model}{The trained xgboost model.}
+#'   \item{train_idx}{Training sample indices.}
+#'   \item{mz_values}{The m/z values corresponding to SHAP columns.}
+#'   \item{shap_matrix}{SHAP values for the training pixels.}
+#'   \item{positive_class}{The label value treated as the ROI.}
 #'
 #' @export
 #'
@@ -77,7 +83,9 @@ sifs_load_data <- function(mis_path, spmat_path, roi_names = NULL) {
 sifs_compute_shap <- function(spmat_obj, labels, roi_name,
                                train_ratio = 0.8,
                                xgb_params = NULL,
-                               nrounds = 200L) {
+                               nrounds = 200L,
+                               positive_class = 1L,
+                               seed = 123L) {
 
   if (is.null(xgb_params)) {
     xgb_params <- list(
@@ -88,81 +96,150 @@ sifs_compute_shap <- function(spmat_obj, labels, roi_name,
       colsample_bytree = 0.6,
       min_child_weight = 3,
       subsample = 1,
-      eval_metric = "logloss"
+      eval_metric = "logloss",
+      nthread = 2,
+      verbosity = 0
     )
   }
 
-  # Convert to dense matrix
-  X <- as.matrix(spmat_obj$spmat)
-  y <- as.numeric(as.character(labels))
+  if (inherits(spmat_obj, "sparseIntensityMatrix")) {
+    X <- spmat_obj$spmat
+    mz_values <- spmat_obj$mzAxis
+  } else {
+    X <- spmat_obj
+    mz_values <- if (!is.null(colnames(X))) {
+      suppressWarnings(as.numeric(colnames(X)))
+    } else {
+      seq_len(ncol(X))
+    }
+    if (anyNA(mz_values)) {
+      mz_values <- seq_len(ncol(X))
+    }
+  }
 
-  # Split data
-  set.seed(123)
-  split_idx <- createDataPartition(y, p = train_ratio, list = FALSE)
+  if (!inherits(X, "dgCMatrix") && !is.matrix(X)) {
+    stop("`spmat_obj` must be a sparseIntensityMatrix or a matrix.",
+         call. = FALSE)
+  }
 
-  train_data <- X[split_idx, ]
-  train_labels <- y[split_idx]
-  test_data <- X[-split_idx, ]
-  test_labels <- y[-split_idx]
+  X <- as.matrix(X)
+  mz_values <- as.numeric(mz_values)
 
-  # Train final model
-  dtrain <- xgb.DMatrix(data = train_data, label = train_labels)
-  model <- xgb.train(
-    params = xgb_params,
-    data = dtrain,
-    nrounds = nrounds
+  raw_labels <- as.character(labels)
+
+  if (length(raw_labels) != nrow(X)) {
+    stop(
+      "`labels` length (", length(raw_labels), ") must equal the number of ",
+      "pixels (", nrow(X), ").",
+      call. = FALSE
+    )
+  }
+
+  if (anyNA(raw_labels)) {
+    stop("`labels` contains missing values.", call. = FALSE)
+  }
+
+  y_roi <- as.integer(raw_labels == as.character(positive_class))
+  y <- y_roi
+
+  if (length(unique(y)) < 2L) {
+    stop("Both ROI and non-ROI classes are required.", call. = FALSE)
+  }
+
+  if (!is.numeric(train_ratio) || length(train_ratio) != 1L ||
+      train_ratio <= 0 || train_ratio >= 1) {
+    stop("`train_ratio` must be a single number between 0 and 1.",
+         call. = FALSE)
+  }
+
+  # Stratified split without requiring the caret package.
+  set.seed(seed)
+  train_idx <- sort(unlist(lapply(split(seq_along(y), y), function(idx) {
+    sample(idx, size = max(1L, floor(train_ratio * length(idx))))
+  }), use.names = FALSE))
+
+  if (length(unique(y[train_idx])) < 2L) {
+    stop("The training split contains only one class. Increase `train_ratio`.",
+         call. = FALSE)
+  }
+
+  train_data <- X[train_idx, , drop = FALSE]
+  train_labels <- y[train_idx]
+
+  colnames(train_data) <- as.character(mz_values)
+
+  dtrain <- xgboost::xgb.DMatrix(
+    data = train_data,
+    label = train_labels,
+    missing = NA
   )
 
-  # Compute SHAP using treeshap
-  xai_train_df <- as.data.frame(train_data)
-  xai_train_idx <- split_idx
-
-  roi_label_map <- c(VT = "Vt_vs_all_lbls", Nec = "Nec_vs_all_lbls", PreNec = "PreNec_vs_all_lbls")
-  label_col <- roi_label_map[[roi_name]]
-
-  raw_labels <- as.character(labels[xai_train_idx])
-  target_is_roi <- ifelse(raw_labels == "1", 1L, 0L)
-
-  roi_dtrain <- xgb.DMatrix(data = train_data, label = target_is_roi)
-  roi_model <- xgb.train(
+  model <- xgboost::xgb.train(
     params = xgb_params,
-    data = roi_dtrain,
+    data = dtrain,
     nrounds = nrounds,
     verbose = 0
   )
 
-  roi_unified <- tryCatch(
-    treeshap::unify(roi_model, xai_train_df),
+  # Compute SHAP on the training pixels. Feature names are preserved so that
+  # downstream HMCS ranking can map SHAP columns back to m/z values.
+  xai_train_df <- as.data.frame(train_data, check.names = FALSE)
+
+  unified <- tryCatch(
+    treeshap::unify(model, xai_train_df),
     error = function(e) {
-      xai_unify_xgboost(roi_model, xai_train_df)
+      stop(
+        "Could not unify the xgboost model for treeshap: ",
+        conditionMessage(e),
+        call. = FALSE
+      )
     }
   )
 
-  roi_treeshap <- treeshap::treeshap(
-    roi_unified,
+  shap_result <- treeshap::treeshap(
+    unified,
     xai_train_df,
     verbose = FALSE
   )
 
-  target_rows <- target_is_roi == 1L
-  target_shaps <- roi_treeshap$shaps[target_rows, , drop = FALSE]
-  mean_target_shap <- colMeans(target_shaps)
-  mz_values <- as.numeric(names(mean_target_shap))
+  shap_matrix <- as.matrix(shap_result$shaps)
 
-  # Build SHAP data frame
+  if (ncol(shap_matrix) != length(mz_values)) {
+    stop(
+      "SHAP output has ", ncol(shap_matrix), " features but the m/z axis has ",
+      length(mz_values), ".",
+      call. = FALSE
+    )
+  }
+
+  colnames(shap_matrix) <- as.character(mz_values)
+
+  target_rows <- train_labels == 1L
+  target_shaps <- shap_matrix[target_rows, , drop = FALSE]
+
+  if (nrow(target_shaps) == 0L) {
+    stop("No ROI pixels were present in the training split.", call. = FALSE)
+  }
+
+  mean_target_shap <- colMeans(target_shaps)
+
   shap_df <- data.frame(
     mzList = mz_values,
-    !!paste0(roi_name, "_SHAP") := as.numeric(mean_target_shap)
+    shap = as.numeric(mean_target_shap),
+    check.names = FALSE
   )
+  names(shap_df)[2] <- paste0(roi_name, "_SHAP")
 
-  # Order by absolute SHAP value
-  shap_df <- shap_df[order(-abs(shap_df[[paste0(roi_name, "_SHAP")]])), ]
+  shap_df <- shap_df[order(-abs(shap_df[[2]])), , drop = FALSE]
+  rownames(shap_df) <- NULL
 
   list(
     shap_df = shap_df,
     model = model,
-    train_idx = split_idx,
-    mz_values = mz_values
+    train_idx = train_idx,
+    mz_values = mz_values,
+    shap_matrix = shap_matrix,
+    positive_class = positive_class
   )
 }
 
@@ -175,7 +252,7 @@ sifs_compute_shap <- function(spmat_obj, labels, roi_name,
 #' @param focus_roi Character string, which ROI to focus on (e.g., "VT")
 #' @param weigh_shap Logical, whether to apply SHAP weighing (default FALSE)
 #' @param weight_method Character, "pos", "neg", or "absolute" (default "absolute")
-#' @param ... Additional arguments passed to Zero_remover
+#' @param ... Currently ignored.
 #'
 #' @return A list containing:
 #'   \item{filtered_df}{Data frame with filtered SHAP values}
@@ -193,43 +270,69 @@ sifs_filter_features <- function(shap_results, focus_roi = "VT",
   weight_method <- match.arg(weight_method)
   shap_df <- shap_results$shap_df
 
-  # Apply zero-remover
-  # Assume shap_df has columns: mzList, focus_roi_SHAP
-  # Need to also have other ROI SHAP values - this is simplified
-  # In full workflow, SHAP_df would have VT_SHAP, Nec_SHAP, etc.
+  if (is.null(shap_df) || !"mzList" %in% names(shap_df)) {
+    stop("`shap_results$shap_df` must contain an `mzList` column.",
+         call. = FALSE)
+  }
 
-  # For now, return the df with a filter based on non-zero values
-  if (ncol(shap_df) >= 3) {
-    # Has multiple ROI columns
+  # A feature is relevant if any of its SHAP contributions are non-zero.
+  # Use absolute values so that large negative and positive contributions are
+  # treated equally.
+  if (ncol(shap_df) >= 2L) {
     mat <- as.matrix(shap_df[, -1, drop = FALSE])
-    keep_idx <- rowSums(mat != 0) > 0
+    keep_idx <- rowSums(abs(mat), na.rm = TRUE) > 0
+
+    if (anyNA(keep_idx)) {
+      keep_idx[is.na(keep_idx)] <- FALSE
+    }
+
     filtered_df <- shap_df[keep_idx, , drop = FALSE]
-    removed_pct <- round(100 * (1 - sum(keep_idx) / nrow(shap_df)), 1)
+    removed_pct <- round(
+      100 * (1 - nrow(filtered_df) / nrow(shap_df)),
+      1
+    )
   } else {
     filtered_df <- shap_df
     removed_pct <- 0
   }
 
-  # Apply SHAP weighing if requested
-  weighed_values <- NULL
-  if (weigh_shap) {
-    # Simplified weighing - focus on positive SHAP for the ROI
-    shap_col <- paste0(focus_roi, "_SHAP")
-    other_cols <- setdiff(colnames(filtered_df), c("mzList", shap_col))
+  rownames(filtered_df) <- NULL
 
-    if (length(other_cols) > 0) {
+  # Optional SHAP weighing. The main vignette uses the unweighted HMCS path.
+  weighed_values <- NULL
+  if (isTRUE(weigh_shap)) {
+    shap_col <- paste0(focus_roi, "_SHAP")
+
+    if (!shap_col %in% names(filtered_df)) {
+      stop("Column `", shap_col, "` was not found in the SHAP data frame.",
+           call. = FALSE)
+    }
+
+    other_cols <- setdiff(names(filtered_df), c("mzList", shap_col))
+
+    if (length(other_cols) > 0L) {
       mat <- as.matrix(filtered_df[, c(shap_col, other_cols), drop = FALSE])
       if (weight_method == "pos") {
-        weighted <- filtered_df[[shap_col]] - rowSums(mat[, -1, drop = FALSE])
+        weighted <- filtered_df[[shap_col]] -
+          rowSums(mat[, -1, drop = FALSE])
       } else if (weight_method == "neg") {
-        weighted <- -filtered_df[[shap_col]] + rowSums(mat[, -1, drop = FALSE])
-      } else if (weight_method == "absolute") {
-        weighted <- abs(filtered_df[[shap_col]]) - rowSums(abs(mat[, -1, drop = FALSE]))
+        weighted <- -filtered_df[[shap_col]] +
+          rowSums(mat[, -1, drop = FALSE])
+      } else {
+        weighted <- abs(filtered_df[[shap_col]]) -
+          rowSums(abs(mat[, -1, drop = FALSE]))
       }
       weighed_values <- weighted
+    } else {
+      weighed_values <- filtered_df[[shap_col]]
     }
   }
 
+  list(
+    filtered_df = filtered_df,
+    removed_pct = removed_pct,
+    weighed_values = weighed_values
+  )
 }
 
 #' Calculate HMCS (Hotspot Margin Cancer Score)
@@ -237,45 +340,54 @@ sifs_filter_features <- function(shap_results, focus_roi = "VT",
 #' Calculate the HMCS values from DSC (Dice Similarity Coefficient) data.
 #' This is the binary mode calculation for viable tumor vs necrosis.
 #'
-#' @param dsc_df Data frame with columns: mzList, dsc_mpm_{ROI1}, dsc_mpm_{ROI2}, etc.
-#' @param focus_roi Character string, which ROI to focus on ("VT" or "Nec")
-#' @param roi_names Character vector of all ROI names in the DSC df
+#' @param dsc_df Data frame with `mzList` and `dsc_mpm_*` columns.
+#' @param focus_roi Character string, the ROI to focus on (for example
+#'   `"VT"`).
+#' @param reference_roi Character string, the comparison ROI. Defaults to
+#'   `"Nec"` for backward compatibility. Use `"nonVT"` for a binary VT versus
+#'   non-VT contrast without reading necrosis labels.
+#' @param roi_names Optional character vector of ROI names. If supplied,
+#'   `reference_roi` must be one of them.
 #'
-#' @return A numeric vector of HMCS values, one per m/z value
+#' @return A named numeric vector of HMCS values, one per m/z value.
 #'
 #' @export
 #'
 #' @importFrom stats setNames
-sifs_calculate_hmcs <- function(dsc_df, focus_roi = "VT", roi_names = c("VT", "Nec")) {
+sifs_calculate_hmcs <- function(dsc_df,
+                                focus_roi = "VT",
+                                reference_roi = "Nec",
+                                roi_names = NULL) {
 
-  if (!focus_roi %in% roi_names) {
-    stop("focus_roi must be one of: ", paste(roi_names, collapse = ", "))
+  if (!"mzList" %in% names(dsc_df)) {
+    stop("`dsc_df` must contain an `mzList` column.", call. = FALSE)
   }
 
-  # Get DSC columns for the ROIs
-  dsc_cols <- paste0("dsc_mpm_", roi_names)
-  available_cols <- dsc_cols[dsc_cols %in% colnames(dsc_df)]
+  focus_col <- paste0("dsc_mpm_", focus_roi)
+  ref_col <- paste0("dsc_mpm_", reference_roi)
 
-  if (length(available_cols) < 2) {
-    stop("DSC dataframe must contain at least two dsc_mpm_ columns")
-  }
-
-  hmcs_values <- numeric(nrow(dsc_df))
-
-  if (focus_roi == "VT") {
-    vt_col <- "dsc_mpm_VT"
-    nec_col <- "dsc_mpm_Nec"
-    if (vt_col %in% available_cols && nec_col %in% available_cols) {
-      hmcs_values <- dsc_df[[vt_col]] - dsc_df[[nec_col]]
+  if (!is.null(roi_names)) {
+    if (!focus_roi %in% roi_names) {
+      stop("focus_roi must be one of: ",
+           paste(roi_names, collapse = ", "), call. = FALSE)
     }
-  } else if (focus_roi == "Nec") {
-    nec_col <- "dsc_mpm_Nec"
-    vt_col <- "dsc_mpm_VT"
-    if (nec_col %in% available_cols && vt_col %in% available_cols) {
-      hmcs_values <- dsc_df[[nec_col]] - dsc_df[[vt_col]]
+    if (!reference_roi %in% roi_names) {
+      stop("reference_roi must be one of: ",
+           paste(roi_names, collapse = ", "), call. = FALSE)
     }
   }
 
+  missing_cols <- setdiff(c(focus_col, ref_col), names(dsc_df))
+
+  if (length(missing_cols) > 0L) {
+    stop(
+      "DSC dataframe is missing column(s): ",
+      paste(missing_cols, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  hmcs_values <- dsc_df[[focus_col]] - dsc_df[[ref_col]]
   setNames(hmcs_values, dsc_df$mzList)
 }
 
@@ -284,59 +396,91 @@ sifs_calculate_hmcs <- function(dsc_df, focus_roi = "VT", roi_names = c("VT", "N
 #' Create plots for SIFS analysis results including SHAP rankings,
 #' HMCS values, and dependence plots.
 #'
-#' @param hmcs_results Named numeric vector from sifs_calculate_hmcs()
-#' @param shap_df Data frame from sifs_compute_shap() or sifs_filter_features()
-#' @param output_dir Character string, directory to save plots (optional)
-#' @param top_n integer, number of top features to display (default 10)
-#' @param ... Additional plotting parameters
+#' @param hmcs_results Named numeric vector from `sifs_calculate_hmcs()` or
+#'   a data frame with `mzList` and an HMCS column.
+#' @param shap_df Data frame from `sifs_compute_shap()` or
+#'   `sifs_filter_features()`.
+#' @param output_dir Character string, directory to save plots (optional).
+#' @param top_n Integer, number of top features to display (default 10).
+#' @param ... Additional plotting parameters (currently unused).
 #'
-#' @return A list of ggplot objects
+#' @return A list of ggplot objects. The output directory, if used, is stored
+#'   in the `output_dir` attribute.
 #'
 #' @export
 #'
-#' @importFrom ggplot2 ggplot geom_col coord_flip theme_minimal ggsave
+#' @importFrom ggplot2 ggplot geom_col coord_flip theme_minimal ggsave aes labs
 #' @importFrom data.table data.table
+#' @importFrom utils globalVariables head
 sifs_visualize <- function(hmcs_results, shap_df, output_dir = NULL,
                             top_n = 10, ...) {
 
   plots <- list()
 
+  if (is.data.frame(hmcs_results)) {
+    if (!"mzList" %in% names(hmcs_results)) {
+      stop("HMCS data frame must contain `mzList`.", call. = FALSE)
+    }
+    hmcs_col <- setdiff(names(hmcs_results), "mzList")[[1L]]
+    hmcs_named <- stats::setNames(
+      as.numeric(hmcs_results[[hmcs_col]]),
+      as.character(hmcs_results$mzList)
+    )
+  } else {
+    hmcs_named <- hmcs_results
+  }
+
+  if (is.null(names(hmcs_named))) {
+    stop("`hmcs_results` must be a named vector or a data frame.",
+         call. = FALSE)
+  }
+
   # 1. Top HMCS values
-  hmcs_sorted <- sort(hmcs_results, decreasing = TRUE)
+  hmcs_sorted <- sort(hmcs_named, decreasing = TRUE, na.last = TRUE)
   hmcs_top <- head(hmcs_sorted, top_n)
 
-  plots$hmcs_bar <- ggplot(
-    data.frame(mzList = names(hmcs_top), HMCS = as.numeric(hmcs_top)),
-    aes(x = reorder(mzList, HMCS), y = HMCS)
+  plots$hmcs_bar <- ggplot2::ggplot(
+    data.frame(
+      mzList = names(hmcs_top),
+      HMCS = as.numeric(hmcs_top)
+    ),
+    ggplot2::aes(x = stats::reorder(mzList, HMCS), y = HMCS)
   ) +
-    geom_col(fill = "steelblue") +
-    coord_flip() +
-    labs(
+    ggplot2::geom_col(fill = "steelblue") +
+    ggplot2::coord_flip() +
+    ggplot2::labs(
       title = "Top HMCS Values",
       x = "m/z",
       y = "HMCS"
     ) +
-    theme_minimal()
+    ggplot2::theme_minimal()
 
   # 2. SHAP mean absolute values
-  if ("mzList" %in% colnames(shap_df) && ncol(shap_df) >= 3) {
+  if (is.data.frame(shap_df) &&
+      "mzList" %in% names(shap_df) &&
+      ncol(shap_df) >= 2L) {
     shap_abs <- shap_df
-    shap_abs$mean_abs <- rowSums(abs(shap_df[, -1, drop = FALSE]))
+    shap_mat <- as.matrix(shap_abs[, setdiff(names(shap_abs), "mzList"),
+                                   drop = FALSE])
+    shap_abs$mean_abs <- rowSums(abs(shap_mat), na.rm = TRUE)
 
-    shap_top <- head(shap_abs[order(-shap_abs$mean_abs), ], top_n)
+    shap_top <- head(
+      shap_abs[order(-shap_abs$mean_abs), , drop = FALSE],
+      top_n
+    )
 
-    plots$shap_bar <- ggplot(
+    plots$shap_bar <- ggplot2::ggplot(
       shap_top,
-      aes(x = reorder(mzList, mean_abs), y = mean_abs)
+      ggplot2::aes(x = stats::reorder(mzList, mean_abs), y = mean_abs)
     ) +
-      geom_col(fill = "darkgreen") +
-      coord_flip() +
-      labs(
+      ggplot2::geom_col(fill = "darkgreen") +
+      ggplot2::coord_flip() +
+      ggplot2::labs(
         title = "Mean Absolute SHAP Values",
         x = "m/z",
         y = "Mean |SHAP|"
       ) +
-      theme_minimal()
+      ggplot2::theme_minimal()
   } else {
     plots$shap_bar <- NULL
   }
@@ -344,17 +488,21 @@ sifs_visualize <- function(hmcs_results, shap_df, output_dir = NULL,
   # 3. Save plots if output_dir specified
   if (!is.null(output_dir)) {
     dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+
     for (name in names(plots)) {
-      ggsave(
-        filename = file.path(output_dir, paste0(name, ".png")),
-        plot = plots[[name]],
-        dpi = 300,
-        width = 10,
-        height = 6
-      )
+      if (!is.null(plots[[name]])) {
+        ggplot2::ggsave(
+          filename = file.path(output_dir, paste0(name, ".png")),
+          plot = plots[[name]],
+          dpi = 300,
+          width = 10,
+          height = 6
+        )
+      }
     }
   }
 
+  attr(plots, "output_dir") <- output_dir
   plots
 }
 
@@ -363,30 +511,48 @@ sifs_visualize <- function(hmcs_results, shap_df, output_dir = NULL,
 #' A convenience function that runs the full SIFS pipeline from data loading
 #' through to visualization in a sequential manner.
 #'
-#' @param mis_path Path to MIS RDS file
-#' @param spmat_path Path to SPMAT RDS file
-#' @param roi_names Character vector of ROI names
-#' @param focus_roi Which ROI to focus the analysis on
-#' @param ... Additional arguments passed to internal functions
+#' @param mis_path Path to MIS RDS file.
+#' @param spmat_path Path to SPMAT RDS file.
+#' @param roi_names Character vector of ROI names.
+#' @param focus_roi Which ROI to focus the analysis on.
+#' @param dsc_df Data frame with `mzList` and `dsc_mpm_*` columns. This must
+#'   be supplied by the caller because DSC depends on the spatial model
+#'   workflow; the function no longer invents placeholder values.
+#' @param reference_roi Character string, the comparison ROI passed to
+#'   `sifs_calculate_hmcs()`. Defaults to `"Nec"`; use `"nonVT"` for the
+#'   binary VT versus non-VT contrast.
+#' @param positive_class Value of the MIS label column that represents the
+#'   focus ROI. Defaults to `1`.
+#' @param ... Additional arguments passed to internal functions.
 #'
-#' @return A list containing all intermediate and final results
+#' @return A list containing all intermediate and final results.
 #'
 #' @export
 #'
 #' @importFrom stats setNames
 sifs_run_workflow <- function(mis_path, spmat_path, roi_names = NULL,
-                               focus_roi = "VT", ...) {
+                               focus_roi = "VT", dsc_df = NULL,
+                               reference_roi = "Nec",
+                               positive_class = 1L, ...) {
+
+  if (is.null(dsc_df)) {
+    stop(
+      "`dsc_df` is required. Compute DSC values with the moleculaR spatial ",
+      "workflow (SPP/MPM/DSC) and pass the resulting data frame.",
+      call. = FALSE
+    )
+  }
 
   cat("=== Step 1: Loading data ===\n")
   data <- sifs_load_data(mis_path, spmat_path, roi_names)
 
   cat("=== Step 2: Computing SHAP values ===\n")
-  # Need labels - extract from MIS
   labels <- data$mis$Vt_vs_all_lbls
   shap_results <- sifs_compute_shap(
     spmat_obj = data$spmat,
     labels = labels,
     roi_name = focus_roi,
+    positive_class = positive_class,
     ...
   )
 
@@ -394,21 +560,22 @@ sifs_run_workflow <- function(mis_path, spmat_path, roi_names = NULL,
   filtered <- sifs_filter_features(shap_results, focus_roi = focus_roi, ...)
 
   cat("=== Step 4: Calculating HMCS ===\n")
-  # Need DSC data - this would typically come from the moleculaR workflow
-  # For now, we'll create a placeholder using the filtered results
   hmcs <- sifs_calculate_hmcs(
-    dsc_df = data.frame(mzList = filtered$filtered_df$mzList,
-                        dsc_mpm_VT = rnorm(nrow(filtered$filtered_df)),
-                        dsc_mpm_Nec = rnorm(nrow(filtered$filtered_df))),
-    focus_roi = focus_roi
+    dsc_df = dsc_df,
+    focus_roi = focus_roi,
+    reference_roi = reference_roi
   )
 
   cat("=== Step 5: Visualizing results ===\n")
-  viz <- sifs_visualize(hmcs, filtered$filtered_df,
-                        output_dir = file.path("SIFS_results", focus_roi))
+  output_dir <- file.path("SIFS_results", focus_roi)
+  viz <- sifs_visualize(
+    hmcs,
+    filtered$filtered_df,
+    output_dir = output_dir
+  )
 
   cat("=== SIFS Workflow Complete ===\n")
-  cat("Results saved to:", viz$output_dir, "\n")
+  cat("Results saved to:", attr(viz, "output_dir"), "\n")
 
   list(
     data = data,
@@ -418,3 +585,6 @@ sifs_run_workflow <- function(mis_path, spmat_path, roi_names = NULL,
     visualization = viz
   )
 }
+
+# Suppress R CMD check notes for ggplot2 non-standard evaluation symbols.
+utils::globalVariables(c("mzList", "HMCS", "mean_abs"))

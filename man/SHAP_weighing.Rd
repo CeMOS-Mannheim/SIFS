@@ -7,7 +7,7 @@
 SHAP_weighing(
   df,
   focusColumn = "VtShap",
-  condition = which_shap_focus,
+  condition = "pos",
   weighted = FALSE,
   ...
 )
